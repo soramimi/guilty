@@ -1,0 +1,112 @@
+body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+
+.repo-list {
+    margin-top: 20px;
+}
+
+.repo-card {
+    margin-bottom: 15px;
+    transition: all 0.3s ease;
+}
+
+.repo-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.loading-spinner {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 200px;
+}
+
+.error-message {
+    color: #dc3545;
+    padding: 15px;
+    border-radius: 4px;
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+}
+
+/* テーブルスタイルを追加 */
+.table td, .table th {
+    white-space: nowrap;
+    text-align: left;
+}
+
+/* 日時セルを等幅フォントで表示 */
+.datetime-cell {
+    font-family: 'Courier New', Courier, monospace;
+    white-space: nowrap;
+}
+
+/* モーダル全体のラッパー */
+.modal-wrapper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1050;
+}
+
+/* モーダル背景 */
+.modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1040;
+}
+
+/* モーダル本体のスタイル */
+.file-modal {
+    position: relative;
+    z-index: 1050;
+    display: block;
+}
+
+.file-modal .modal-dialog {
+    max-width: 80%;
+    margin: 1.75rem auto;
+}
+
+.file-modal .modal-content {
+    height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.file-modal .modal-body {
+    flex-grow: 1;
+    overflow: auto;
+}
+
+.file-content {
+    padding: 15px;
+    margin: 0;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    border: 1px solid #eee;
+    font-family: monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-x: auto;
+    max-height: 100%;
+    text-align: left; /* ファイルコンテンツを左寄せに */
+    tab-size: 4; /* タブ文字をスペース4個分の幅に設定 */
+    -moz-tab-size: 4; /* Firefox対応 */
+}
+
+/* モーダル表示時のbodyスタイル */
+body.modal-open {
+    overflow: hidden;
+    padding-right: 15px;
+}

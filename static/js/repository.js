@@ -63,12 +63,7 @@ new Vue({
     isBinaryFile: false,
     showFileModal: false,
     modalJustOpened: false,
-    hostName: document.querySelector('meta[name="git-host"]')?.content || 'localhost',
-    // 削除確認モーダル用の状態
-    showDeleteModal: false,
-    deletingRepository: false,
-    deleteError: null,
-    deleteSuccess: false
+    hostName: document.querySelector('meta[name="git-host"]')?.content || 'localhost'
   },
   computed: {
     repoPath() {
@@ -92,21 +87,10 @@ new Vue({
       );
     }
   },
-  watch: {
-    // showDeleteModalの値が変更されたときに、bodyクラスを切り替える
-    showDeleteModal(newVal) {
-      if (newVal) {
-        document.body.classList.add('modal-open');
-      } else {
-        document.body.classList.remove('modal-open');
-      }
-    }
-  },
   template: `
     <div>
       <div class="mb-3">
         <a href="/" class="btn btn-outline-secondary">← リポジトリ一覧に戻る</a>
-        <button class="btn btn-danger ml-2" @click="openDeleteModal">リポジトリを削除</button>
       </div>
       
       <div v-if="loading" class="loading-spinner">
@@ -263,39 +247,6 @@ git push origin master</pre>
           </div>
         </div>
       </div>
-
-      <!-- 削除確認モーダル -->
-      <div v-if="showDeleteModal" class="modal-wrapper">
-        <div class="modal-backdrop" @click="showDeleteModal = false"></div>
-        <div class="modal delete-modal" tabindex="-1" role="dialog">
-          <div class="modal-dialog" role="document">
-            <div class="modal-content">
-              <div class="modal-header">
-                <h5 class="modal-title">リポジトリを削除</h5>
-                <button type="button" class="close" @click="showDeleteModal = false" aria-label="閉じる">
-                  <span aria-hidden="true">&times;</span>
-                </button>
-              </div>
-              <div class="modal-body">
-                <p>本当にこのリポジトリを削除しますか？この操作は元に戻せません。</p>
-                <div v-if="deleteError" class="alert alert-danger">
-                  {{ deleteError }}
-                </div>
-                <div v-if="deleteSuccess" class="alert alert-success">
-                  リポジトリが正常に削除されました。
-                </div>
-              </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" @click="showDeleteModal = false">キャンセル</button>
-                <button type="button" class="btn btn-danger" @click="deleteRepository" :disabled="deletingRepository">
-                  <span v-if="deletingRepository" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                  削除
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   `,
   created() {
@@ -416,9 +367,6 @@ git push origin master</pre>
         if (this.showFileModal) {
           this.closeFileModal();
         }
-        if (this.showDeleteModal) {
-          this.showDeleteModal = false;
-        }
       }
     },
     handleOutsideClick(event) {
@@ -428,15 +376,6 @@ git push origin master</pre>
         if (modalContent && !modalContent.contains(event.target) && 
             !event.target.classList.contains('close')) {
           this.closeFileModal();
-        }
-      }
-      
-      // 削除モーダル処理
-      if (this.showDeleteModal) {
-        const deleteModalContent = document.querySelector('.delete-modal .modal-content');
-        if (deleteModalContent && !deleteModalContent.contains(event.target) && 
-            !event.target.classList.contains('close')) {
-          this.showDeleteModal = false;
         }
       }
     },
@@ -467,29 +406,6 @@ git push origin master</pre>
           this.error = `ディレクトリの内容を取得できませんでした: ${error.message}`;
           this.loading = false;
         });
-    },
-    deleteRepository() {
-      this.deletingRepository = true;
-      this.deleteError = null;
-      this.deleteSuccess = false;
-
-      axios.delete(`/api/repository/${encodeURIComponent(this.repoName)}`)
-        .then(() => {
-          this.deleteSuccess = true;
-          setTimeout(() => {
-            window.location.href = '/';
-          }, 2000);
-        })
-        .catch(error => {
-          this.deleteError = `リポジトリの削除に失敗しました: ${error.message}`;
-        })
-        .finally(() => {
-          this.deletingRepository = false;
-        });
-    },
-    openDeleteModal() {
-      // シンプルに削除モーダルの表示フラグのみを設定
-      this.showDeleteModal = true;
     }
   }
 });

@@ -250,7 +250,7 @@ func repositoriesHandler(w http.ResponseWriter, r *http.Request) {
 func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS") // DELETEを削除
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
 	// OPTIONSリクエスト（プリフライト）に対する応答
@@ -266,29 +266,6 @@ func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "無効なリポジトリパス"})
-		return
-	}
-
-	// DELETEリクエストの場合はリポジトリを削除（非アクセス状態にする）
-	if r.Method == http.MethodDelete {
-		repoPath := filepath.Join(GitRepositoryRoot, decodedPath+".git")
-
-		// リポジトリの存在確認
-		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
-			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]string{"error": "リポジトリが見つかりません"})
-			return
-		}
-
-		// リポジトリを削除（実際は権限を変更するだけ）
-		if err := disableRepository(repoPath); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": "リポジトリの削除に失敗しました: " + err.Error()})
-			return
-		}
-
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"message": "リポジトリを削除しました"})
 		return
 	}
 
@@ -1109,17 +1086,6 @@ func createRepository(name string) error {
 		// 失敗した場合はディレクトリを削除してクリーンアップ
 		os.RemoveAll(repoPath)
 		return fmt.Errorf("リポジトリの初期化に失敗しました: %w", err)
-	}
-
-	return nil
-}
-
-// disableRepository はリポジトリを非アクセス状態にする
-func disableRepository(repoPath string) error {
-	// リポジトリの権限を変更する (chmod 000)
-	err := os.Chmod(repoPath, 0000)
-	if err != nil {
-		return fmt.Errorf("リポジトリの権限変更に失敗しました: %w", err)
 	}
 
 	return nil

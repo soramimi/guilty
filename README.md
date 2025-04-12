@@ -1,6 +1,8 @@
 # Guilty
 
-> **WORK IN PROGRESS**: This project is currently under active development.
+**🚧 This is a work in progress 🚧**
+
+*Note: Most of this code was generated using GitHub Copilot Agent and Claude 3.7 Sonnet.*
 
 Guilty is a web-based Git repository manager that provides simple repository management capabilities through an intuitive web interface. The name "Guilty" is a playful reference to Git, suggesting that your code changes can't hide from version control.
 
@@ -67,7 +69,3 @@ make build
 # Clean build artifacts
 make clean
 ```
-
-## Acknowledgements
-
-Most of the code in this project was generated with the assistance of GitHub Copilot Agent and Claude 3.7 Sonnet.

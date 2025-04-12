@@ -3,7 +3,6 @@ Vue.component('repository-row', {
   template: `
     <tr class="repo-row" @click="openRepository" style="cursor: pointer;">
       <td class="repo-name">{{ repository.name }}</td>
-      <td class="repo-path">{{ repository.path }}</td>
       <td class="repo-commit" v-if="repository.lastCommit">
         {{ formatDate(repository.lastCommit.date) }} by {{ repository.lastCommit.author }}<br>
         <small>{{ repository.lastCommit.message }}</small>
@@ -90,7 +89,6 @@ new Vue({
             <thead class="thead-light">
               <tr>
                 <th>リポジトリ名</th>
-                <th>パス</th>
                 <th>最終コミット</th>
               </tr>
             </thead>

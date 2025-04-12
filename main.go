@@ -1143,6 +1143,13 @@ func deleteRepository(name string) error {
 
 	// 既に削除済みのリポジトリがある場合は、それを先に完全に削除
 	if _, err := os.Stat(newPath); err == nil {
+		// 削除する前にアクセス権限を変更（chmod 755）して読み書き可能にする
+		err = os.Chmod(newPath, 0755)
+		if err != nil {
+			log.Printf("警告: 既存の削除済みリポジトリの権限変更に失敗しました: %v", err)
+			// 権限変更に失敗してもディレクトリ削除を試みる
+		}
+		
 		err := os.RemoveAll(newPath)
 		if err != nil {
 			return fmt.Errorf("既存の削除済みリポジトリの削除に失敗しました: %w", err)

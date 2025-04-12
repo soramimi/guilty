@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ .Title }}</title>
+    <link rel="stylesheet" href="/static/lib/bootstrap/bootstrap.min.css">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container my-4">
+        <h1>{{ .Title }}</h1>
+        <p>{{ .Message }}</p>
+        
+        <div id="create-repo-app">
+            <!-- Vue.jsアプリケーションがここにマウントされます -->
+        </div>
+    </div>
+
+    <!-- Vue.js とその他のライブラリ -->
+    <script src="/static/lib/vue/vue.js"></script>
+    <script src="/static/lib/axios/axios.min.js"></script>
+    <script src="/static/js/create-repository.js?v={{ .BuildVersion }}"></script>
+</body>
+</html>

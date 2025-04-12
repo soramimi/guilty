@@ -54,13 +54,20 @@ new Vue({
   },
   template: `
     <div>
-      <div class="form-group">
-        <input 
-          type="text" 
-          class="form-control"
-          v-model="searchQuery"
-          placeholder="リポジトリを検索..."
-        />
+      <div class="d-flex justify-content-between mb-3">
+        <div class="form-group flex-grow-1 mr-2">
+          <input 
+            type="text" 
+            class="form-control"
+            v-model="searchQuery"
+            placeholder="リポジトリを検索..."
+          />
+        </div>
+        <div>
+          <a href="/create-repository" class="btn btn-primary">
+            <i class="fa fa-plus-circle"></i> 新規リポジトリ
+          </a>
+        </div>
       </div>
       
       <div v-if="loading" class="loading-spinner">

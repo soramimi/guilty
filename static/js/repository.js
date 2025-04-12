@@ -62,7 +62,13 @@ new Vue({
     fileError: null,
     isBinaryFile: false,
     showFileModal: false,
-    modalJustOpened: false
+    modalJustOpened: false,
+    hostName: document.querySelector('meta[name="git-host"]')?.content || 'localhost',
+    // 削除確認モーダル用の状態
+    showDeleteModal: false,
+    deletingRepository: false,
+    deleteError: null,
+    deleteSuccess: false
   },
   computed: {
     repoPath() {
@@ -86,10 +92,21 @@ new Vue({
       );
     }
   },
+  watch: {
+    // showDeleteModalの値が変更されたときに、bodyクラスを切り替える
+    showDeleteModal(newVal) {
+      if (newVal) {
+        document.body.classList.add('modal-open');
+      } else {
+        document.body.classList.remove('modal-open');
+      }
+    }
+  },
   template: `
     <div>
       <div class="mb-3">
         <a href="/" class="btn btn-outline-secondary">← リポジトリ一覧に戻る</a>
+        <button class="btn btn-danger ml-2" @click="openDeleteModal">リポジトリを削除</button>
       </div>
       
       <div v-if="loading" class="loading-spinner">
@@ -110,14 +127,27 @@ new Vue({
           </div>
           <div class="card-body">
             <dl class="row">
-              <dt class="col-sm-2">名前</dt>
-              <dd class="col-sm-10">{{ repository.name }}</dd>
+              <dt class="col-sm-2 text-left">名前</dt>
+              <dd class="col-sm-10 text-left">{{ repository.name }}</dd>
               
-              <dt class="col-sm-2">最終コミット</dt>
-              <dd v-if="repository.lastCommit" class="col-sm-10">
+              <dt class="col-sm-2 text-left">最終コミット</dt>
+              <dd v-if="repository.lastCommit" class="col-sm-10 text-left">
                 {{ formatDate(repository.lastCommit.date) }} by {{ repository.lastCommit.author }}
               </dd>
-              <dd v-else class="col-sm-10">コミット情報なし</dd>
+              <dd v-else class="col-sm-10 text-left">コミット情報なし</dd>
+              
+              <dt class="col-sm-2 text-left">クローンURL</dt>
+              <dd class="col-sm-10">
+                <div class="input-group">
+                  <input type="text" class="form-control" readonly :value="repository.cloneUrl || ''" id="cloneUrlInput">
+                  <div class="input-group-append">
+                    <button class="btn btn-outline-secondary" type="button" @click="copyCloneUrl" title="URLをコピー">
+                      <span>コピー</span>
+                    </button>
+                  </div>
+                </div>
+                <small class="text-muted mt-1 d-block">{{ repository.cloneUrl ? '' : 'クローンURLが取得できませんでした' }}</small>
+              </dd>
             </dl>
           </div>
         </div>
@@ -161,7 +191,17 @@ new Vue({
             </div>
             
             <div v-if="filteredFiles.length === 0" class="text-center my-3">
-              <p>表示するファイルがありません</p>
+              <div class="alert alert-info" role="alert">
+                <i class="fa fa-info-circle mr-1"></i> このリポジトリにはまだコミットがありません。<br>
+                最初のコミットをプッシュするには、以下のコマンドを実行してください：
+                <pre class="mt-2 mb-0 bg-light p-2 rounded text-left">
+git clone {{ repository.cloneUrl }}
+cd {{ repository.name }}
+touch README.md
+git add README.md
+git commit -m "Initial commit"
+git push origin master</pre>
+              </div>
             </div>
             
             <div v-else class="table-responsive">
@@ -223,6 +263,39 @@ new Vue({
           </div>
         </div>
       </div>
+
+      <!-- 削除確認モーダル -->
+      <div v-if="showDeleteModal" class="modal-wrapper">
+        <div class="modal-backdrop" @click="showDeleteModal = false"></div>
+        <div class="modal delete-modal" tabindex="-1" role="dialog">
+          <div class="modal-dialog" role="document">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">リポジトリを削除</h5>
+                <button type="button" class="close" @click="showDeleteModal = false" aria-label="閉じる">
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div>
+              <div class="modal-body">
+                <p>本当にこのリポジトリを削除しますか？この操作は元に戻せません。</p>
+                <div v-if="deleteError" class="alert alert-danger">
+                  {{ deleteError }}
+                </div>
+                <div v-if="deleteSuccess" class="alert alert-success">
+                  リポジトリが正常に削除されました。
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" @click="showDeleteModal = false">キャンセル</button>
+                <button type="button" class="btn btn-danger" @click="deleteRepository" :disabled="deletingRepository">
+                  <span v-if="deletingRepository" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                  削除
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   `,
   created() {
@@ -264,6 +337,22 @@ new Vue({
           this.error = `リポジトリ詳細の取得に失敗しました: ${error.message}`;
           this.loading = false;
         });
+    },
+    copyCloneUrl() {
+      const cloneUrlInput = document.getElementById('cloneUrlInput');
+      if (cloneUrlInput) {
+        cloneUrlInput.select();
+        document.execCommand('copy');
+        // コピー成功を通知するためにボタンテキストを一時的に変更
+        const button = document.querySelector('#cloneUrlInput + .input-group-append button');
+        if (button) {
+          const originalText = button.textContent;
+          button.textContent = 'コピーしました！';
+          setTimeout(() => {
+            button.textContent = originalText;
+          }, 1500);
+        }
+      }
     },
     openDirectory(directory) {
       this.loading = true;
@@ -323,21 +412,32 @@ new Vue({
     },
     handleKeyDown(event) {
       // ESCキーでモーダルを閉じる
-      if (event.key === 'Escape' && this.showFileModal) {
-        this.closeFileModal();
+      if (event.key === 'Escape') {
+        if (this.showFileModal) {
+          this.closeFileModal();
+        }
+        if (this.showDeleteModal) {
+          this.showDeleteModal = false;
+        }
       }
     },
     handleOutsideClick(event) {
-      // モーダルが表示されていない、または開いた直後はスキップ
-      if (!this.showFileModal || this.modalJustOpened) return;
+      // ファイルモーダル処理
+      if (this.showFileModal && !this.modalJustOpened) {
+        const modalContent = document.querySelector('.file-modal .modal-content');
+        if (modalContent && !modalContent.contains(event.target) && 
+            !event.target.classList.contains('close')) {
+          this.closeFileModal();
+        }
+      }
       
-      // モーダルコンテンツの要素を取得
-      const modalContent = document.querySelector('.file-modal .modal-content');
-      
-      // クリックされた要素がモーダルコンテンツの外部であればモーダルを閉じる
-      if (modalContent && !modalContent.contains(event.target) && 
-          !event.target.classList.contains('close')) {
-        this.closeFileModal();
+      // 削除モーダル処理
+      if (this.showDeleteModal) {
+        const deleteModalContent = document.querySelector('.delete-modal .modal-content');
+        if (deleteModalContent && !deleteModalContent.contains(event.target) && 
+            !event.target.classList.contains('close')) {
+          this.showDeleteModal = false;
+        }
       }
     },
     navigateToRoot() {
@@ -367,6 +467,29 @@ new Vue({
           this.error = `ディレクトリの内容を取得できませんでした: ${error.message}`;
           this.loading = false;
         });
+    },
+    deleteRepository() {
+      this.deletingRepository = true;
+      this.deleteError = null;
+      this.deleteSuccess = false;
+
+      axios.delete(`/api/repository/${encodeURIComponent(this.repoName)}`)
+        .then(() => {
+          this.deleteSuccess = true;
+          setTimeout(() => {
+            window.location.href = '/';
+          }, 2000);
+        })
+        .catch(error => {
+          this.deleteError = `リポジトリの削除に失敗しました: ${error.message}`;
+        })
+        .finally(() => {
+          this.deletingRepository = false;
+        });
+    },
+    openDeleteModal() {
+      // シンプルに削除モーダルの表示フラグのみを設定
+      this.showDeleteModal = true;
     }
   }
 });

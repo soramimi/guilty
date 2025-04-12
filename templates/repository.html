@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="git-host" content="{{ .HostName }}">
     <title>{{ .Title }}</title>
     <link rel="stylesheet" href="/static/lib/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="/static/css/style.css">
@@ -20,6 +21,6 @@
     <!-- Vue.js とその他のライブラリ -->
     <script src="/static/lib/vue/vue.js"></script>
     <script src="/static/lib/axios/axios.min.js"></script>
-    <script src="/static/js/repository.js"></script>
+    <script src="/static/js/repository.js?v={{ .BuildVersion }}"></script>
 </body>
 </html>

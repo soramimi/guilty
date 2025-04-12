@@ -63,6 +63,9 @@ new Vue({
     isBinaryFile: false,
     showFileModal: false,
     modalJustOpened: false,
+    showDeleteModal: false, // 削除確認モーダル表示フラグ
+    deleteInProgress: false, // 削除処理中フラグ
+    deleteError: null, // 削除エラーメッセージ
     hostName: document.querySelector('meta[name="git-host"]')?.content || 'localhost'
   },
   computed: {
@@ -133,6 +136,13 @@ new Vue({
                 <small class="text-muted mt-1 d-block">{{ repository.cloneUrl ? '' : 'クローンURLが取得できませんでした' }}</small>
               </dd>
             </dl>
+            
+            <!-- 削除ボタン追加 -->
+            <div class="mt-3 text-right">
+              <button class="btn btn-danger" @click="confirmDelete">
+                <span>リポジトリの削除</span>
+              </button>
+            </div>
           </div>
         </div>
         
@@ -242,6 +252,40 @@ git push origin master</pre>
               </div>
               <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" @click="closeFileModal">閉じる</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- リポジトリ削除確認モーダル -->
+      <div v-if="showDeleteModal" class="modal-wrapper delete-modal-wrapper" style="display: block !important;">
+        <div class="modal-backdrop delete-modal-backdrop" @click="cancelDelete" style="display: block; z-index: 1999;"></div>
+        <div class="modal delete-modal" tabindex="-1" role="dialog" aria-labelledby="deleteModalLabel" aria-hidden="false" style="display: block; z-index: 2000;">
+          <div class="modal-dialog" role="document">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title text-danger" id="deleteModalLabel">リポジトリの削除確認</h5>
+                <button type="button" class="close" @click="cancelDelete" aria-label="閉じる">
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div>
+              <div class="modal-body">
+                <p><strong>{{ repository.name }}</strong> リポジトリを削除しますか？</p>
+                <div class="alert alert-warning">
+                  <strong>注意:</strong> この操作はリポジトリをアクセスできなくします。削除されたリポジトリは復元できません。
+                </div>
+                
+                <div v-if="deleteError" class="alert alert-danger mt-3">
+                  {{ deleteError }}
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" @click="cancelDelete">キャンセル</button>
+                <button type="button" class="btn btn-danger" @click="deleteRepository" :disabled="deleteInProgress">
+                  <span v-if="deleteInProgress" class="spinner-border spinner-border-sm mr-2" role="status"></span>
+                  削除する
+                </button>
               </div>
             </div>
           </div>
@@ -361,11 +405,102 @@ git push origin master</pre>
         }
       }, 300);
     },
+    confirmDelete() {
+      // 一度ファイルモーダルが開いていたら閉じる
+      if (this.showFileModal) {
+        this.closeFileModal();
+      }
+      
+      // 削除確認モーダル表示前に少し遅延
+      setTimeout(() => {
+        // 削除確認モーダルを表示
+        this.showDeleteModal = true;
+        this.deleteError = null;
+        document.body.classList.add('modal-open');
+        document.body.classList.add('has-delete-modal'); // 削除モーダル専用クラスを追加
+        
+        // 強制的にDOM更新をトリガーする
+        this.$nextTick(() => {
+          // モーダルを確実に表示させるため、モーダル要素のスタイルを直接操作
+          const modal = document.querySelector('.delete-modal');
+          if (modal) {
+            modal.style.display = 'block';
+            modal.style.zIndex = '2000';
+            modal.style.visibility = 'visible';
+            modal.style.opacity = '1';
+          }
+          
+          // モーダルのbackdropも確実に表示
+          const backdrop = document.querySelector('.modal-wrapper:last-child .modal-backdrop');
+          if (backdrop) {
+            backdrop.style.display = 'block';
+            backdrop.style.zIndex = '1999';
+          }
+          
+          // すべてのモーダルラッパーを最前面に
+          const wrappers = document.querySelectorAll('.modal-wrapper');
+          if (wrappers.length > 0) {
+            const lastWrapper = wrappers[wrappers.length - 1];
+            lastWrapper.style.zIndex = '1990';
+          }
+        });
+      }, 100);
+    },
+    cancelDelete() {
+      // 削除確認モーダルを閉じる
+      this.showDeleteModal = false;
+      document.body.classList.remove('modal-open');
+      document.body.classList.remove('has-delete-modal'); // 削除モーダル専用クラスを削除
+      this.deleteError = null;
+    },
+    deleteRepository() {
+      // 削除処理中フラグをセット
+      this.deleteInProgress = true;
+      this.deleteError = null;
+      
+      // リポジトリ名から.git拡張子を削除（既に含まれている場合）
+      let repoNameToDelete = this.repoName;
+      if (repoNameToDelete.endsWith('.git')) {
+        repoNameToDelete = repoNameToDelete.substring(0, repoNameToDelete.length - 4);
+      }
+      
+      // URLを正しく構築
+      const apiUrl = `/api/repository/${encodeURIComponent(repoNameToDelete)}`;
+      
+      // リポジトリ削除APIを呼び出し
+      axios({
+        method: 'post',
+        url: apiUrl,
+        data: {
+          operation: "delete" // 操作タイプを指定
+        },
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+        .then(response => {
+          // 削除成功時の処理
+          this.deleteInProgress = false;
+          this.showDeleteModal = false;
+          document.body.classList.remove('modal-open');
+          document.body.classList.remove('has-delete-modal'); // 削除モーダル専用クラスを削除
+          // ホームページ（リポジトリ一覧）にリダイレクト
+          window.location.href = '/';
+        })
+        .catch(error => {
+          // エラー処理
+          this.deleteInProgress = false;
+          this.deleteError = `リポジトリの削除に失敗しました: ${error.response?.data?.error || error.message || '不明なエラー'}`;
+        });
+    },
     handleKeyDown(event) {
       // ESCキーでモーダルを閉じる
       if (event.key === 'Escape') {
         if (this.showFileModal) {
           this.closeFileModal();
+        }
+        if (this.showDeleteModal) {
+          this.cancelDelete();
         }
       }
     },
@@ -376,6 +511,15 @@ git push origin master</pre>
         if (modalContent && !modalContent.contains(event.target) && 
             !event.target.classList.contains('close')) {
           this.closeFileModal();
+        }
+      }
+      
+      // 削除モーダル処理
+      if (this.showDeleteModal) {
+        const modalContent = document.querySelector('.delete-modal .modal-content');
+        if (modalContent && !modalContent.contains(event.target) && 
+            !event.target.classList.contains('close')) {
+          this.cancelDelete();
         }
       }
     },

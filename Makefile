@@ -1,4 +1,4 @@
-.PHONY: run build clean test
+.PHONY: run build clean test install
 
 # デフォルトターゲット
 all: run
@@ -9,11 +9,15 @@ run:
 
 # アプリケーションをビルド
 build:
-	go build -o app main.go
+	go build -o guilty main.go
+
+# インストール
+install: build
+	install -D -m 755 guilty /usr/local/bin/guilty
 
 # バイナリとキャッシュファイルを削除
 clean:
-	rm -f app
+	rm -f guilty
 	go clean
 
 # テストを実行
@@ -29,7 +33,7 @@ setup:
 		echo '<head>' >> templates/index.html; \
 		echo '    <meta charset="UTF-8">' >> templates/index.html; \
 		echo '    <meta name="viewport" content="width=device-width, initial-scale=1.0">' >> templates/index.html; \
-		echo '    <title>{{.Title}}</title>' >> templates/index.html; \
+		echo '    <title>Guilty - {{.Title}}</title>' >> templates/index.html; \
 		echo '    <link rel="stylesheet" href="/static/css/style.css">' >> templates/index.html; \
 		echo '</head>' >> templates/index.html; \
 		echo '<body>' >> templates/index.html; \
@@ -38,7 +42,7 @@ setup:
 		echo '</body>' >> templates/index.html; \
 		echo '</html>' >> templates/index.html; \
 		echo 'body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }' > static/css/style.css; \
-		echo 'console.log("Hello from JavaScript!");' > static/js/main.js; \
+		echo 'console.log("Hello from Guilty!");' > static/js/main.js; \
 	fi
 
 # ヘルプを表示
@@ -46,6 +50,7 @@ help:
 	@echo "使用方法:"
 	@echo "  make run      - サーバーを起動します"
 	@echo "  make build    - アプリケーションをビルドします"
+	@echo "  make install  - アプリケーションをインストールします"
 	@echo "  make clean    - ビルド成果物を削除します" 
 	@echo "  make test     - テストを実行します"
 	@echo "  make setup    - 必要なディレクトリとファイルを作成します"

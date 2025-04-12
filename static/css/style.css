@@ -88,6 +88,37 @@ body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
     overflow: auto;
 }
 
+/* 削除モーダルのスタイル */
+.delete-modal {
+    position: relative;
+    z-index: 2000 !important; /* 確実に最前面に表示 */
+    display: block !important; /* !importantで確実に表示 */
+    visibility: visible !important; /* 確実に表示 */
+    pointer-events: auto !important; /* イベントを確実に処理 */
+}
+
+.delete-modal .modal-dialog {
+    max-width: 500px;
+    margin: 1.75rem auto;
+    opacity: 1 !important;
+    position: relative;
+    z-index: 2001 !important;
+}
+
+.delete-modal .modal-content {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.5); /* シャドウを強調 */
+    background-color: white !important;
+}
+
+/* モーダル表示時には、複数モーダルの競合を防止 */
+body.modal-open.has-delete-modal {
+    overflow: hidden;
+    padding-right: 15px;
+}
+
 .file-content {
     padding: 15px;
     margin: 0;

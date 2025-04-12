@@ -250,7 +250,7 @@ func repositoriesHandler(w http.ResponseWriter, r *http.Request) {
 func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS") // DELETEを削除
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
 	// OPTIONSリクエスト（プリフライト）に対する応答
@@ -266,6 +266,37 @@ func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "無効なリポジトリパス"})
+		return
+	}
+
+	// POSTリクエストの場合はリポジトリを削除する (DELETEからPOSTに変更)
+	if r.Method == http.MethodPost {
+		// リクエストボディから操作タイプを取得
+		var requestBody map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "不正なリクエスト形式"})
+			return
+		}
+		
+		// 操作タイプが "delete" の場合のみ削除を実行
+		if requestBody["operation"] != "delete" {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "不正な操作タイプ"})
+			return
+		}
+		
+		repoName := decodedPath
+		err := deleteRepository(repoName)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+
+		// 成功レスポンス
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"message": "リポジトリが削除されました"})
 		return
 	}
 
@@ -1086,6 +1117,49 @@ func createRepository(name string) error {
 		// 失敗した場合はディレクトリを削除してクリーンアップ
 		os.RemoveAll(repoPath)
 		return fmt.Errorf("リポジトリの初期化に失敗しました: %w", err)
+	}
+
+	return nil
+}
+
+// deleteRepository はリポジトリを削除する（実際には名前を変更して権限を変更する）
+func deleteRepository(name string) error {
+	// リポジトリ名から.gitを取り除く（既に含まれている場合）
+	baseName := name
+	if strings.HasSuffix(baseName, ".git") {
+		baseName = strings.TrimSuffix(baseName, ".git")
+	}
+
+	// リポジトリのパスを構築
+	repoPath := filepath.Join(GitRepositoryRoot, baseName+".git")
+
+	// リポジトリの存在確認
+	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
+		return fmt.Errorf("リポジトリ '%s' は存在しません", baseName)
+	}
+
+	// 移動先のパス（.deletedを追加）
+	newPath := repoPath + ".deleted"
+
+	// 既に削除済みのリポジトリがある場合は、それを先に完全に削除
+	if _, err := os.Stat(newPath); err == nil {
+		err := os.RemoveAll(newPath)
+		if err != nil {
+			return fmt.Errorf("既存の削除済みリポジトリの削除に失敗しました: %w", err)
+		}
+	}
+
+	// リポジトリの名前を変更
+	err := os.Rename(repoPath, newPath)
+	if err != nil {
+		return fmt.Errorf("リポジトリの名前変更に失敗しました: %w", err)
+	}
+
+	// 権限を変更（読み書き禁止: chmod 000）
+	err = os.Chmod(newPath, 0000)
+	if err != nil {
+		// 権限変更に失敗した場合でも、名前の変更は成功しているので警告だけ出して続行
+		log.Printf("警告: リポジトリのアクセス権限変更に失敗しました: %v", err)
 	}
 
 	return nil

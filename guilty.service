@@ -1,0 +1,14 @@
+[Unit]
+Description=Guilty Git Repository Manager
+After=network.target
+
+[Service]
+Type=simple
+User=git
+ExecStart=/usr/local/bin/guilty
+WorkingDirectory=/usr/local/share/guilty
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

@@ -20,6 +20,35 @@ Guilty is a web-based Git repository manager that provides simple repository man
 - Go 1.16 or later
 - Git command-line tools
 - systemd (for service installation)
+- A local `git` user account (see Prerequisites section below)
+
+## Prerequisites
+
+### Git User Account Setup
+
+Guilty requires a local `git` user account on your system to properly handle repository access:
+
+```bash
+# Create a git user account if it doesn't exist
+sudo useradd git
+```
+
+If a `git` account already exists on your system and you cannot create one with `useradd`:
+
+1. Create a home directory for the git user if needed:
+   ```bash
+   sudo mkdir -p /home/git
+   ```
+
+2. Edit the `/etc/passwd` file to set the correct home directory for the git user.
+
+3. For external access to repositories, create a symbolic link from `/home/git/git` to your repository location:
+   ```bash
+   cd /home/git
+   sudo ln -s /mnt/git git
+   ```
+
+This setup ensures that repositories can be accessed using the format: `git@hostname:git/repository.git`
 
 ## Installation
 

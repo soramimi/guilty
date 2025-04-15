@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
@@ -24,7 +23,6 @@ const ServerPort = 1080
 const GitRepositoryRoot = "/mnt/git"
 
 // GitHostName はGitリポジトリのホスト名を定義します（git clone用）
-//var GitHostName = "localhost" // デフォルト値を設定
 var GitHostName = "git"
 
 // GitCloneURLTemplate はクローンURLのテンプレートを定義します
@@ -404,36 +402,65 @@ func getGitRepositories() ([]GitRepository, error) {
 	gitDir := GitRepositoryRoot
 	var repositories []GitRepository
 
-	// ディレクトリ内の項目を確認
-	err := filepath.WalkDir(gitDir, func(path string, d fs.DirEntry, err error) error {
+	// ディレクトリエントリを取得
+	entries, err := os.ReadDir(gitDir)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, entry := range entries {
+		// エントリのパスを構築
+		path := filepath.Join(gitDir, entry.Name())
+		
+		// ディレクトリまたはシンボリックリンク経由でディレクトリである場合のみ処理
+		isDir := entry.IsDir()
+		
+		// シンボリックリンクの場合、実際の対象を確認
+		if entry.Type()&os.ModeSymlink != 0 {
+			// シンボリックリンクの実際のターゲットを取得
+			realPath, err := os.Readlink(path)
+			if err != nil {
+				// シンボリックリンクが読めない場合はスキップ
+				continue
+			}
+			
+			// 相対パスの場合は絶対パスに変換
+			if !filepath.IsAbs(realPath) {
+				realPath = filepath.Join(gitDir, realPath)
+			}
+			
+			// リンク先の情報を取得
+			info, err := os.Stat(realPath)
+			if err != nil {
+				// リンク先情報が取得できない場合はスキップ
+				continue
+			}
+			
+			// リンク先がディレクトリの場合
+			isDir = info.IsDir()
+			if isDir {
+				// リンク先パスを使用
+				path = realPath
+			}
+		}
+		
+		// ディレクトリでない場合はスキップ
+		if !isDir {
+			continue
+		}
+		
+		// ファイル情報を取得してアクセス権を確認
+		info, err := os.Stat(path)
 		if err != nil {
-			// エラーが発生しても処理を続行
-			// この変更により、権限のないディレクトリがあってもスキップして続行する
-			return nil
+			// 情報が取得できない場合はスキップ
+			continue
 		}
-
-		// ルートディレクトリはスキップ
-		if path == gitDir {
-			return nil
-		}
-
-		// ディレクトリのみ処理
-		if !d.IsDir() {
-			return nil
-		}
-
-		// ディレクトリの読み取り権限をチェック
-		info, err := d.Info()
-		if err != nil {
-			// 情報が取得できない場合はスキップ（権限がない可能性）
-			return nil
-		}
-
+		
 		// 読み取り権限がない場合はスキップ
 		if info.Mode().Perm()&0444 == 0 {
-			return filepath.SkipDir
+			continue
 		}
-
+		
 		// ベアリポジトリのみを想定
 		headPath := filepath.Join(path, "HEAD")
 		_, err = os.Stat(headPath)
@@ -444,7 +471,7 @@ func getGitRepositories() ([]GitRepository, error) {
 			if strings.HasSuffix(repoName, ".git") {
 				repoName = strings.TrimSuffix(repoName, ".git")
 			}
-
+			
 			repo := GitRepository{
 				Path: path,
 				Name: repoName,
@@ -452,22 +479,20 @@ func getGitRepositories() ([]GitRepository, error) {
 				// クローンURLを生成
 				CloneURL: fmt.Sprintf(GitCloneURLTemplate, GitHostName, repoName),
 			}
-
+			
 			// 最新のコミット情報を取得
 			repo.LastCommit = getLastCommit(path, true)
 			repositories = append(repositories, repo)
-
-			// サブディレクトリのスキャンをスキップ
-			return filepath.SkipDir
 		}
-
-		return nil
-	})
-
-	// 処理中にエラーが発生してもリポジトリ一覧を返す
-	// （読み取り権限のないディレクトリがあってもアクセス可能なリポジトリは一覧表示する）
-	if err != nil && len(repositories) == 0 {
-		return nil, err
+	}
+	
+	// リポジトリが見つからなかった場合
+	if len(repositories) == 0 {
+		// エラーがある場合だけエラーを返す
+		// エラーがなければ空配列を返す
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// 最終コミット日時の降順でソート（新しい順）

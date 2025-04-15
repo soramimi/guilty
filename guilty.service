@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=git
 ExecStart=/home/git/.guilty/guilty
-WorkingDirectory=/home/git/i.guilty
+WorkingDirectory=/home/git/.guilty
 Restart=on-failure
 RestartSec=5s
 

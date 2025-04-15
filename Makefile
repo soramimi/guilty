@@ -42,7 +42,3 @@ start:
 
 stop:
 	systemctl stop guilty
-
-
-
-

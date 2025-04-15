@@ -398,80 +398,98 @@ func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"error": "サポートされていないメソッドです"})
 }
 
-func getGitRepositories() ([]GitRepository, error) {
-	gitDir := GitRepositoryRoot
-	var repositories []GitRepository
+// getDirectories はディレクトリエントリを取得し、シンボリックリンクも解決する
+// ディレクトリのみを返し、ファイルは返さない
+func getDirectories(path string) ([]string, error) {
+	var entries []string
 
 	// ディレクトリエントリを取得
-	entries, err := os.ReadDir(gitDir)
+	dirEntries, err := os.ReadDir(path)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, entry := range entries {
+	for _, entry := range dirEntries {
+		// ディレクトリでない場合はスキップ
+		if !entry.IsDir() && entry.Type()&os.ModeSymlink == 0 {
+			continue
+		}
+
 		// エントリのパスを構築
-		path := filepath.Join(gitDir, entry.Name())
-		
-		// ディレクトリまたはシンボリックリンク経由でディレクトリである場合のみ処理
-		isDir := entry.IsDir()
-		
+		entryPath := filepath.Join(path, entry.Name())
+
 		// シンボリックリンクの場合、実際の対象を確認
 		if entry.Type()&os.ModeSymlink != 0 {
 			// シンボリックリンクの実際のターゲットを取得
-			realPath, err := os.Readlink(path)
+			realPath, err := os.Readlink(entryPath)
 			if err != nil {
 				// シンボリックリンクが読めない場合はスキップ
 				continue
 			}
-			
+
 			// 相対パスの場合は絶対パスに変換
 			if !filepath.IsAbs(realPath) {
-				realPath = filepath.Join(gitDir, realPath)
+				realPath = filepath.Join(path, realPath)
 			}
-			
+
 			// リンク先の情報を取得
 			info, err := os.Stat(realPath)
 			if err != nil {
 				// リンク先情報が取得できない場合はスキップ
 				continue
 			}
-			
-			// リンク先がディレクトリの場合
-			isDir = info.IsDir()
-			if isDir {
+
+			// リンク先がディレクトリの場合のみ追加
+			if info.IsDir() {
 				// リンク先パスを使用
-				path = realPath
+				entryPath = realPath
+			} else {
+				// ディレクトリでない場合はスキップ
+				continue
 			}
 		}
-		
-		// ディレクトリでない場合はスキップ
-		if !isDir {
-			continue
-		}
-		
+
+		entries = append(entries, entryPath)
+	}
+
+	return entries, nil
+}
+
+func getGitRepositories() ([]GitRepository, error) {
+	gitDir := GitRepositoryRoot
+	var repositories []GitRepository
+
+	// ディレクトリエントリを取得
+	entries, err := getDirectories(gitDir)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, path := range entries {
 		// ファイル情報を取得してアクセス権を確認
 		info, err := os.Stat(path)
 		if err != nil {
 			// 情報が取得できない場合はスキップ
 			continue
 		}
-		
+
 		// 読み取り権限がない場合はスキップ
 		if info.Mode().Perm()&0444 == 0 {
 			continue
 		}
-		
+
 		// ベアリポジトリのみを想定
 		headPath := filepath.Join(path, "HEAD")
 		_, err = os.Stat(headPath)
 		if err == nil {
 			// ベアリポジトリ
 			repoName := filepath.Base(path)
+
 			// .git拡張子を削除
 			if strings.HasSuffix(repoName, ".git") {
 				repoName = strings.TrimSuffix(repoName, ".git")
 			}
-			
+
 			repo := GitRepository{
 				Path: path,
 				Name: repoName,
@@ -479,13 +497,13 @@ func getGitRepositories() ([]GitRepository, error) {
 				// クローンURLを生成
 				CloneURL: fmt.Sprintf(GitCloneURLTemplate, GitHostName, repoName),
 			}
-			
+
 			// 最新のコミット情報を取得
 			repo.LastCommit = getLastCommit(path, true)
 			repositories = append(repositories, repo)
 		}
 	}
-	
+
 	// リポジトリが見つからなかった場合
 	if len(repositories) == 0 {
 		// エラーがある場合だけエラーを返す

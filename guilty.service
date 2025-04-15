@@ -5,8 +5,8 @@ After=network.target
 [Service]
 Type=simple
 User=git
-ExecStart=/usr/local/bin/guilty
-WorkingDirectory=/usr/local/share/guilty
+ExecStart=/home/git/guilty/guilty
+WorkingDirectory=/home/git/guilty
 Restart=on-failure
 RestartSec=5s
 

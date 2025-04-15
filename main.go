@@ -18,11 +18,14 @@ import (
 	"time"
 )
 
+const ServerPort = 1080
+
 // GitRepositoryRoot はGitリポジトリのルートディレクトリを定義します
 const GitRepositoryRoot = "/mnt/git"
 
 // GitHostName はGitリポジトリのホスト名を定義します（git clone用）
-var GitHostName = "localhost" // デフォルト値を設定
+//var GitHostName = "localhost" // デフォルト値を設定
+var GitHostName = "git"
 
 // GitCloneURLTemplate はクローンURLのテンプレートを定義します
 const GitCloneURLTemplate = "git@%s:git/%s.git"
@@ -97,8 +100,8 @@ func main() {
 	http.HandleFunc("/create-repository", createRepositoryPageHandler)
 
 	// サーバー起動
-	fmt.Println("サーバーを起動しています。http://localhost:8000 にアクセスしてください")
-	log.Fatal(http.ListenAndServe(":8000", nil))
+	fmt.Printf("サーバーを起動しています。http://localhost:%d にアクセスしてください\n", ServerPort)
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", ServerPort), nil))
 }
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {

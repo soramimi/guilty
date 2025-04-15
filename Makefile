@@ -13,11 +13,11 @@ build:
 
 # インストール
 install: build
-	mkdir -p /home/git/guilty
-	install -m 755 guilty /home/git/guilty/
-	cp -a static /home/git/guilty/
-	cp -a templates /home/git/guilty/
-	chown -R git:git /home/git/guilty
+	mkdir -p /home/git/.guilty
+	install -m 755 guilty /home/git/.guilty/
+	cp -a static /home/git/.guilty/
+	cp -a templates /home/git/.guilty/
+	chown -R git:git /home/git/.guilty
 	#install guilty.service /etc/systemd/system/
 
 # バイナリとキャッシュファイルを削除

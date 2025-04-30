@@ -18,14 +18,8 @@ Vue.component('repository-row', {
       return date.toLocaleString('ja-JP');
     },
     openRepository() {
-      // ベースパスを削除してリポジトリ名を取得
-      const basePath = "/mnt/git/";
-      let relativePath = this.repository.path;
-      if (relativePath.startsWith(basePath)) {
-        relativePath = relativePath.substring(basePath.length);
-      }
       // リポジトリ詳細ページに遷移
-      window.location.href = `/repository/${encodeURIComponent(relativePath)}`;
+      window.location.href = `/repository/${encodeURIComponent(this.repository.group)}/${encodeURIComponent(this.repository.name)}`;
     }
   }
 });

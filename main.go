@@ -19,14 +19,14 @@ import (
 
 const ServerPort = 1080
 
-// GitRepositoryRoot はGitリポジトリのルートディレクトリを定義します
-const GitRepositoryRoot = "/mnt/git"
+// GitRepositoryHome はGitリポジトリのホームディレクトリを定義します
+const GitRepositoryHome= "/mnt"
 
 // GitHostName はGitリポジトリのホスト名を定義します（git clone用）
 var GitHostName = "git"
 
 // GitCloneURLTemplate はクローンURLのテンプレートを定義します
-const GitCloneURLTemplate = "git@%s:git/%s.git"
+const GitCloneURLTemplate = "git@%s:%s/%s.git"
 
 type PageData struct {
 	Title        string
@@ -37,6 +37,7 @@ type PageData struct {
 
 type GitRepository struct {
 	Path       string      `json:"path"`
+	Group      string      `json:"group"`
 	Name       string      `json:"name"`
 	Type       string      `json:"type"`
 	CloneURL   string      `json:"cloneUrl"` // クローン用URLを追加
@@ -108,10 +109,12 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	groupName := "git"
+
 	// ホームページのデータを準備
 	data := PageData{
 		Title:        "Git リポジトリ一覧",
-		Message:      GitRepositoryRoot + " にあるGitリポジトリ一覧",
+		Message:      groupName + " にあるGitリポジトリ一覧",
 		HostName:     GitHostName,
 		BuildVersion: fmt.Sprintf("%d", time.Now().Unix()), // Unixタイムスタンプをバージョンとして使用
 	}
@@ -230,7 +233,8 @@ func repositoriesHandler(w http.ResponseWriter, r *http.Request) {
 	// GETリクエストの場合はリポジトリ一覧を返す
 	if r.Method == http.MethodGet {
 		// Gitリポジトリを取得
-		repos, err := getGitRepositories()
+		groupName := "git"
+		repos, err := getGitRepositories(groupName)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -246,6 +250,17 @@ func repositoriesHandler(w http.ResponseWriter, r *http.Request) {
 	// 未対応のHTTPメソッド
 	w.WriteHeader(http.StatusMethodNotAllowed)
 	json.NewEncoder(w).Encode(map[string]string{"error": "サポートされていないメソッドです"})
+}
+
+func splitRepositoryName(path string) (group string, name string) {
+	group = "git"
+	name = path
+	i := strings.LastIndex(path, "/")
+	if i != -1 {
+		group = path[:i]
+		name = path[i+1:]
+	}
+	return group, name
 }
 
 func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
@@ -270,7 +285,14 @@ func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// POSTリクエストの場合はリポジトリを削除する (DELETEからPOSTに変更)
+	groupName, repoName := splitRepositoryName(decodedPath)
+
+	// .git拡張子を削除
+	if strings.HasSuffix(repoName, ".git") {
+		repoName = strings.TrimSuffix(repoName, ".git")
+	}
+
+	// POSTリクエストの場合はリポジトリを削除する
 	if r.Method == http.MethodPost {
 		// リクエストボディから操作タイプを取得
 		var requestBody map[string]string
@@ -303,7 +325,7 @@ func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// GETリクエストの場合はリポジトリの詳細を返す
 	if r.Method == http.MethodGet {
-		repoPath, err := filepath.Abs(filepath.Join(GitRepositoryRoot, decodedPath))
+		repoPath, err := filepath.Abs(filepath.Join(GitRepositoryHome, groupName, repoName) + ".git")
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "無効なリポジトリパス"})
@@ -317,50 +339,19 @@ func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// リポジトリのタイプを判定（通常 or ベア）
-		isNormal := false
-		isBare := false
-
-		// 通常リポジトリのチェック
-		if _, err := os.Stat(filepath.Join(repoPath, ".git")); err == nil {
-			isNormal = true
-		}
-
-		// ベアリポジトリのチェック
-		if _, err := os.Stat(filepath.Join(repoPath, "HEAD")); err == nil && !isNormal {
-			isBare = true
-		}
-
-		if !isNormal && !isBare {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Gitリポジトリではありません"})
-			return
-		}
-
-		// リポジトリ情報を取得
-		repoName := filepath.Base(repoPath)
-		// .git拡張子を削除（ベアリポジトリの場合）
-		if strings.HasSuffix(repoName, ".git") {
-			repoName = strings.TrimSuffix(repoName, ".git")
-		}
-
 		repo := GitRepository{
-			Path: repoPath,
+			//Path: repoPath,
+			Path: filepath.Join(groupName, repoName),
 			Name: repoName,
-			Type: "normal",
 			// クローンURLを生成
-			CloneURL: fmt.Sprintf(GitCloneURLTemplate, GitHostName, repoName),
-		}
-
-		if isBare {
-			repo.Type = "bare"
+			CloneURL: fmt.Sprintf(GitCloneURLTemplate, GitHostName, groupName, repoName),
 		}
 
 		// 最新のコミット情報を取得
-		repo.LastCommit = getLastCommit(repoPath, isBare)
+		repo.LastCommit = getLastCommit(repoPath)
 
 		// ファイル一覧を取得
-		files, err := getRepositoryFiles(repoPath, isBare)
+		files, err := getRepositoryFiles(repoPath)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "ファイル一覧の取得に失敗しました: " + err.Error()})
@@ -368,13 +359,13 @@ func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// ブランチリストを取得
-		branches, err := getRepositoryBranches(repoPath, isBare)
+		branches, err := getRepositoryBranches(repoPath)
 		if err != nil {
 			branches = []string{}
 		}
 
 		// タグリストを取得
-		tags, err := getRepositoryTags(repoPath, isBare)
+		tags, err := getRepositoryTags(repoPath)
 		if err != nil {
 			tags = []string{}
 		}
@@ -455,8 +446,11 @@ func getDirectories(path string) ([]string, error) {
 	return entries, nil
 }
 
-func getGitRepositories() ([]GitRepository, error) {
-	gitDir := GitRepositoryRoot
+func getGitRepositories(groupName string) ([]GitRepository, error) {
+	if groupName == "" {
+		return nil, fmt.Errorf("グループ名を空にすることはできません")
+	}
+	gitDir := filepath.Join(GitRepositoryHome, groupName)
 	var repositories []GitRepository
 
 	// ディレクトリエントリを取得
@@ -484,6 +478,7 @@ func getGitRepositories() ([]GitRepository, error) {
 		if err == nil {
 			// ベアリポジトリ
 			repoName := filepath.Base(path)
+			groupName := "git"
 
 			// .git拡張子を削除
 			if strings.HasSuffix(repoName, ".git") {
@@ -492,14 +487,15 @@ func getGitRepositories() ([]GitRepository, error) {
 
 			repo := GitRepository{
 				Path: path,
+				Group: groupName,
 				Name: repoName,
 				Type: "bare",
 				// クローンURLを生成
-				CloneURL: fmt.Sprintf(GitCloneURLTemplate, GitHostName, repoName),
+				CloneURL: fmt.Sprintf(GitCloneURLTemplate, GitHostName, groupName, repoName),
 			}
 
 			// 最新のコミット情報を取得
-			repo.LastCommit = getLastCommit(path, true)
+			repo.LastCommit = getLastCommit(path)
 			repositories = append(repositories, repo)
 		}
 	}
@@ -529,14 +525,10 @@ func getGitRepositories() ([]GitRepository, error) {
 	return repositories, nil
 }
 
-func getLastCommit(repoPath string, isBare bool) *CommitInfo {
+func getLastCommit(repoPath string) *CommitInfo {
 	var cmd *exec.Cmd
 
-	if isBare {
-		cmd = exec.Command("git", "--git-dir="+repoPath, "log", "-1", "--format=%an|%at|%s")
-	} else {
-		cmd = exec.Command("git", "-C", repoPath, "log", "-1", "--format=%an|%at|%s")
-	}
+	cmd = exec.Command("git", "--git-dir="+repoPath, "log", "-1", "--format=%an|%at|%s")
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -562,14 +554,10 @@ func getLastCommit(repoPath string, isBare bool) *CommitInfo {
 }
 
 // hasCommits はリポジトリにコミットが1件以上あるか確認する
-func hasCommits(repoPath string, isBare bool) bool {
+func hasCommits(repoPath string) bool {
 	var cmd *exec.Cmd
 
-	if isBare {
-		cmd = exec.Command("git", "--git-dir="+repoPath, "rev-list", "--count", "HEAD")
-	} else {
-		cmd = exec.Command("git", "-C", repoPath, "rev-list", "--count", "HEAD")
-	}
+	cmd = exec.Command("git", "--git-dir="+repoPath, "rev-list", "--count", "HEAD")
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -587,9 +575,9 @@ func hasCommits(repoPath string, isBare bool) bool {
 }
 
 // リポジトリ内のファイル一覧を取得（ルートディレクトリの1階層のみ）
-func getRepositoryFiles(repoPath string, isBare bool) ([]GitFile, error) {
+func getRepositoryFiles(repoPath string) ([]GitFile, error) {
 	// コミットが存在しない場合は特別な処理
-	if !hasCommits(repoPath, isBare) {
+	if !hasCommits(repoPath) {
 		// コミットがない場合は、空の配列を返す
 		// フロントエンド側で適切に表示する
 		return []GitFile{}, nil
@@ -598,11 +586,7 @@ func getRepositoryFiles(repoPath string, isBare bool) ([]GitFile, error) {
 	var files []GitFile
 	var cmd *exec.Cmd
 
-	if isBare {
-		cmd = exec.Command("git", "--git-dir="+repoPath, "ls-tree", "HEAD")
-	} else {
-		cmd = exec.Command("git", "-C", repoPath, "ls-tree", "HEAD")
-	}
+	cmd = exec.Command("git", "--git-dir="+repoPath, "ls-tree", "HEAD")
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -635,11 +619,7 @@ func getRepositoryFiles(repoPath string, isBare bool) ([]GitFile, error) {
 		var fileSize int64 = 0
 		if fileType == "file" {
 			// ファイルサイズを取得（blob の場合のみ）
-			if isBare {
-				fileSize = getGitObjectSize(repoPath, parts[2], true)
-			} else {
-				fileSize = getGitObjectSize(repoPath, parts[2], false)
-			}
+			fileSize = getGitObjectSize(repoPath, parts[2], true)
 		}
 
 		files = append(files, GitFile{
@@ -647,7 +627,7 @@ func getRepositoryFiles(repoPath string, isBare bool) ([]GitFile, error) {
 			Path:         fileName,
 			Type:         fileType,
 			Size:         fileSize,
-			LastModified: getFileLastModified(repoPath, fileName, isBare),
+			LastModified: getFileLastModified(repoPath, fileName),
 		})
 	}
 
@@ -738,14 +718,10 @@ func getGitObjectSize(repoPath, objectHash string, isBare bool) int64 {
 }
 
 // リポジトリのブランチ一覧を取得
-func getRepositoryBranches(repoPath string, isBare bool) ([]string, error) {
+func getRepositoryBranches(repoPath string) ([]string, error) {
 	var cmd *exec.Cmd
 
-	if isBare {
-		cmd = exec.Command("git", "--git-dir="+repoPath, "branch", "--list")
-	} else {
-		cmd = exec.Command("git", "-C", repoPath, "branch", "--list")
-	}
+	cmd = exec.Command("git", "--git-dir="+repoPath, "branch", "--list")
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -772,14 +748,10 @@ func getRepositoryBranches(repoPath string, isBare bool) ([]string, error) {
 }
 
 // リポジトリのタグ一覧を取得
-func getRepositoryTags(repoPath string, isBare bool) ([]string, error) {
+func getRepositoryTags(repoPath string) ([]string, error) {
 	var cmd *exec.Cmd
 
-	if isBare {
-		cmd = exec.Command("git", "--git-dir="+repoPath, "tag", "--list")
-	} else {
-		cmd = exec.Command("git", "-C", repoPath, "tag", "--list")
-	}
+	cmd = exec.Command("git", "--git-dir="+repoPath, "tag", "--list")
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -823,27 +795,14 @@ func directoryContentsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	repoPath := filepath.Join(GitRepositoryRoot, repoName)
+	groupName := "git"
+	repoPath := filepath.Join(filepath.Join(GitRepositoryHome, groupName), repoName)
 
 	// リポジトリの存在確認
 	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]string{"error": "リポジトリが見つかりません"})
 		return
-	}
-
-	// リポジトリのタイプを判定
-	isNormal := false
-	isBare := false
-
-	// 通常リポジトリのチェック
-	if _, err := os.Stat(filepath.Join(repoPath, ".git")); err == nil {
-		isNormal = true
-	}
-
-	// ベアリポジトリのチェック
-	if _, err := os.Stat(filepath.Join(repoPath, "HEAD")); err == nil && !isNormal {
-		isBare = true
 	}
 
 	// ディレクトリパスの解決
@@ -860,9 +819,9 @@ func directoryContentsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ベアリポジトリの場合は、特別な処理
-	if isBare && dirPath == "" {
+	if dirPath == "" {
 		// ベアリポジトリのルートディレクトリは既に処理済み
-		files, err := getRepositoryFiles(repoPath, true)
+		files, err := getRepositoryFiles(repoPath)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "ディレクトリ内容の取得に失敗しました: " + err.Error()})
@@ -887,7 +846,7 @@ func directoryContentsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ディレクトリの内容を取得（git ls-treeを使用）
-	files, err := getDirectoryContents(repoPath, dirPath, isNormal, isBare)
+	files, err := getDirectoryContents(repoPath, dirPath)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "ディレクトリ内容の取得に失敗しました: " + err.Error()})
@@ -899,15 +858,11 @@ func directoryContentsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // 特定のディレクトリ内のファイル一覧を取得する
-func getDirectoryContents(repoPath, dirPath string, isNormal, isBare bool) ([]GitFile, error) {
+func getDirectoryContents(repoPath, dirPath string) ([]GitFile, error) {
 	var files []GitFile
 	var cmd *exec.Cmd
 
-	if isBare {
-		cmd = exec.Command("git", "--git-dir="+repoPath, "ls-tree", "HEAD:"+dirPath)
-	} else {
-		cmd = exec.Command("git", "-C", repoPath, "ls-tree", "HEAD:"+dirPath)
-	}
+	cmd = exec.Command("git", "--git-dir="+repoPath, "ls-tree", "HEAD:"+dirPath)
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -938,11 +893,7 @@ func getDirectoryContents(repoPath, dirPath string, isNormal, isBare bool) ([]Gi
 		var fileSize int64 = 0
 		if fileType == "file" {
 			// ファイルサイズを取得（blob の場合のみ）
-			if isBare {
-				fileSize = getGitObjectSize(repoPath, parts[2], true)
-			} else {
-				fileSize = getGitObjectSize(repoPath, parts[2], false)
-			}
+			fileSize = getGitObjectSize(repoPath, parts[2], true)
 		}
 
 		files = append(files, GitFile{
@@ -950,7 +901,7 @@ func getDirectoryContents(repoPath, dirPath string, isNormal, isBare bool) ([]Gi
 			Path:         filepath.Join(dirPath, fileName),
 			Type:         fileType,
 			Size:         fileSize,
-			LastModified: getFileLastModified(repoPath, filepath.Join(dirPath, fileName), isBare),
+			LastModified: getFileLastModified(repoPath, filepath.Join(dirPath, fileName)),
 		})
 	}
 
@@ -1000,8 +951,9 @@ func fileContentsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	groupName := "git"
 	// リポジトリパスの構築
-	repoPath := filepath.Join(GitRepositoryRoot, repoName)
+	repoPath := filepath.Join(filepath.Join(GitRepositoryHome, groupName), repoName)
 
 	// リポジトリの存在確認
 	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
@@ -1097,15 +1049,11 @@ func getFileContent(repoPath, filePath string, isNormal, isBare bool) (string, b
 }
 
 // ファイルの最終更新日時を取得する
-func getFileLastModified(repoPath string, filePath string, isBare bool) time.Time {
+func getFileLastModified(repoPath string, filePath string) time.Time {
 	var cmd *exec.Cmd
 
 	// git logコマンドでファイルの最終更新日時を取得
-	if isBare {
-		cmd = exec.Command("git", "--git-dir="+repoPath, "log", "-1", "--format=%at", "--", filePath)
-	} else {
-		cmd = exec.Command("git", "-C", repoPath, "log", "-1", "--format=%at", "--", filePath)
-	}
+	cmd = exec.Command("git", "--git-dir="+repoPath, "log", "-1", "--format=%at", "--", filePath)
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -1135,9 +1083,10 @@ func validateRepositoryName(name string) error {
 	if !validName.MatchString(name) {
 		return fmt.Errorf("リポジトリ名には英数字、ハイフン、アンダースコアのみ使用できます")
 	}
-
+	
+	groupName := "git"
 	// 既存のリポジトリと名前が重複していないかチェック
-	repoPath := filepath.Join(GitRepositoryRoot, name+".git")
+	repoPath := filepath.Join(filepath.Join(GitRepositoryHome, groupName), name+".git")
 	if _, err := os.Stat(repoPath); err == nil {
 		return fmt.Errorf("リポジトリ '%s' は既に存在します", name)
 	}
@@ -1147,8 +1096,10 @@ func validateRepositoryName(name string) error {
 
 // createRepository は新規ベアリポジトリを作成する
 func createRepository(name string) error {
+	groupName, baseName := splitRepositoryName(name);
+
 	// リポジトリのパスを構築
-	repoPath := filepath.Join(GitRepositoryRoot, name+".git")
+	repoPath := filepath.Join(filepath.Join(GitRepositoryHome, groupName), baseName+".git")
 
 	// ディレクトリを作成
 	err := os.MkdirAll(repoPath, 0755)
@@ -1170,14 +1121,10 @@ func createRepository(name string) error {
 
 // deleteRepository はリポジトリを削除する（実際には名前を変更して権限を変更する）
 func deleteRepository(name string) error {
-	// リポジトリ名から.gitを取り除く（既に含まれている場合）
-	baseName := name
-	if strings.HasSuffix(baseName, ".git") {
-		baseName = strings.TrimSuffix(baseName, ".git")
-	}
+	groupName, baseName := splitRepositoryName(name);
 
 	// リポジトリのパスを構築
-	repoPath := filepath.Join(GitRepositoryRoot, baseName+".git")
+	repoPath := filepath.Join(filepath.Join(GitRepositoryHome, groupName), baseName+".git")
 
 	// リポジトリの存在確認
 	if _, err := os.Stat(repoPath); os.IsNotExist(err) {

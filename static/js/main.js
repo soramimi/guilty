@@ -5,13 +5,24 @@
 // グローバル名前空間汚染を避けるためにオブジェクトにまとめる
 const GuiltyUtils = {
   /**
+   * グループ名とリポジトリ名をエンコードしたパスを生成する内部ヘルパー関数
+   * @param {string} groupName - グループ名
+   * @param {string} repoName - リポジトリ名
+   * @returns {string} エンコード済みのパス
+   * @private
+   */
+  _getEncodedPath(groupName, repoName) {
+    return `${encodeURIComponent(groupName)}/${encodeURIComponent(repoName)}`;
+  },
+
+  /**
    * グループ名とリポジトリ名からリポジトリ詳細ページのURLを生成
    * @param {string} groupName - グループ名
    * @param {string} repoName - リポジトリ名
    * @returns {string} リポジトリ詳細ページのURL
    */
   getRepositoryUrl(groupName, repoName) {
-    return `/repository/${encodeURIComponent(groupName)}/${encodeURIComponent(repoName)}`;
+    return `/repository/${this._getEncodedPath(groupName, repoName)}`;
   },
 
   /**
@@ -21,7 +32,7 @@ const GuiltyUtils = {
    * @returns {string} APIで使用するリポジトリパス
    */
   getApiRepositoryPath(groupName, repoName) {
-    return `/api/repository/${encodeURIComponent(groupName)}/${encodeURIComponent(repoName)}`;
+    return `/api/repository/${this._getEncodedPath(groupName, repoName)}`;
   },
 
   /**
@@ -32,7 +43,7 @@ const GuiltyUtils = {
    * @returns {string} APIで使用するファイルパス
    */
   getApiFilePath(groupName, repoName, filePath) {
-    const basePath = `/api/file/${encodeURIComponent(groupName)}/${encodeURIComponent(repoName)}`;
+    const basePath = `/api/file/${this._getEncodedPath(groupName, repoName)}`;
     if (!filePath) return basePath;
     
     // パスの各部分を保持したままURLを構築
@@ -49,7 +60,7 @@ const GuiltyUtils = {
    * @returns {string} APIで使用するディレクトリパス
    */
   getApiDirectoryPath(groupName, repoName, dirPath) {
-    const basePath = `/api/directory/${encodeURIComponent(groupName)}/${encodeURIComponent(repoName)}`;
+    const basePath = `/api/directory/${this._getEncodedPath(groupName, repoName)}`;
     if (!dirPath) return basePath;
     
     // パスの各部分を保持したままURLを構築

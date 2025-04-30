@@ -348,8 +348,9 @@ func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		
-		repoName := decodedPath
-		err := deleteRepository(repoName)
+		// パスから取得したグループ名とリポジトリ名を使用して削除処理を行う
+		fullPath := filepath.Join(groupName, repoName)
+		err := deleteRepository(fullPath)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -1282,46 +1283,46 @@ func createRepository(name string, group string) error {
 
 // deleteRepository はリポジトリを削除する（実際には名前を変更して権限を変更する）
 func deleteRepository(name string) error {
-	groupName, baseName := splitRepositoryName(name);
+    groupName, baseName := splitRepositoryName(name);
 
-	// リポジトリのパスを構築
-	repoPath := filepath.Join(filepath.Join(GitRepositoryHome, groupName), baseName+".git")
+    // リポジトリのパスを構築
+    repoPath := filepath.Join(filepath.Join(GitRepositoryHome, groupName), baseName+".git")
 
-	// リポジトリの存在確認
-	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
-		return fmt.Errorf("リポジトリ '%s' は存在しません", baseName)
-	}
+    // リポジトリの存在確認
+    if _, err := os.Stat(repoPath); os.IsNotExist(err) {
+        return fmt.Errorf("リポジトリ '%s' は存在しません", baseName)
+    }
 
-	// 移動先のパス（.deletedを追加）
-	newPath := repoPath + ".deleted"
+    // 移動先のパス（.deletedを追加）
+    newPath := repoPath + ".deleted"
 
-	// 既に削除済みのリポジトリがある場合は、それを先に完全に削除
-	if _, statErr := os.Stat(newPath); statErr == nil {
-		// 削除する前にアクセス権を変更（chmod 755）して読み書き可能にする
-		chmodErr := os.Chmod(newPath, 0755)
-		if chmodErr != nil {
-			log.Printf("警告: 既存の削除済みリポジトリの権限変更に失敗しました: %v", chmodErr)
-			// 権限変更に失敗してもディレクトリ削除を試みる
-		}
-		
-		removeErr := os.RemoveAll(newPath)
-		if removeErr != nil {
-			return fmt.Errorf("既存の削除済みリポジトリの削除に失敗しました: %w", removeErr)
-		}
-	}
+    // 既に削除済みのリポジトリがある場合は、それを先に完全に削除
+    if _, statErr := os.Stat(newPath); statErr == nil {
+        // 削除する前にアクセス権を変更（chmod 755）して読み書き可能にする
+        chmodErr := os.Chmod(newPath, 0755)
+        if chmodErr != nil {
+            log.Printf("警告: 既存の削除済みリポジトリの権限変更に失敗しました: %v", chmodErr)
+            // 権限変更に失敗してもディレクトリ削除を試みる
+        }
+        
+        removeErr := os.RemoveAll(newPath)
+        if removeErr != nil {
+            return fmt.Errorf("既存の削除済みリポジトリの削除に失敗しました: %w", removeErr)
+        }
+    }
 
-	// リポジトリの名前を変更
-	renameErr := os.Rename(repoPath, newPath)
-	if renameErr != nil {
-		return fmt.Errorf("リポジトリの名前変更に失敗しました: %w", renameErr)
-	}
+    // リポジトリの名前を変更
+    renameErr := os.Rename(repoPath, newPath)
+    if renameErr != nil {
+        return fmt.Errorf("リポジトリの名前変更に失敗しました: %w", renameErr)
+    }
 
-	// 権限を変更（読み書き禁止: chmod 000）
-	chmodErr := os.Chmod(newPath, 0000)
-	if chmodErr != nil {
-		// 権限変更に失敗した場合でも、名前の変更は成功しているので警告だけ出して続行
-		log.Printf("警告: リポジトリのアクセス権限変更に失敗しました: %v", chmodErr)
-	}
+    // 権限を変更（読み書き禁止: chmod 000）
+    chmodErr := os.Chmod(newPath, 0000)
+    if chmodErr != nil {
+        // 権限変更に失敗した場合でも、名前の変更は成功しているので警告だけ出して続行
+        log.Printf("警告: リポジトリのアクセス権限変更に失敗しました: %v", chmodErr)
+    }
 
-	return nil
+    return nil
 }

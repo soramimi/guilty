@@ -1,4 +1,3 @@
-
 // コンポーネントの定義
 const FileRow = {
   props: ['file', 'repoName'],
@@ -500,7 +499,7 @@ git push origin master</pre>
       }
       
       // URLを正しく構築
-      const apiUrl = `/api/repository/${encodeURIComponent(repoNameToDelete)}`;
+      const apiUrl = `/api/repository/${encodeURIComponent(this.groupName)}/${encodeURIComponent(repoNameToDelete)}`;
       
       // リポジトリ削除APIを呼び出し
       axios({
@@ -519,8 +518,8 @@ git push origin master</pre>
           this.showDeleteModal = false;
           document.body.classList.remove('modal-open');
           document.body.classList.remove('has-delete-modal'); // 削除モーダル専用クラスを削除
-          // ホームページ（リポジトリ一覧）にリダイレクト
-          window.location.href = '/';
+          // ホームページ（リポジトリ一覧）にリダイレクトする際、現在のグループ名を維持
+          window.location.href = `/?group=${encodeURIComponent(this.groupName)}`;
         })
         .catch(error => {
           // エラー処理

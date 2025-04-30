@@ -74,7 +74,8 @@ type RepositoryDetails struct {
 
 // リポジトリ作成リクエスト用の構造体
 type CreateRepositoryRequest struct {
-	Name string `json:"name"`
+	Name  string `json:"name"`
+	Group string `json:"group"`
 }
 
 func main() {
@@ -222,14 +223,14 @@ func repositoriesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// リポジトリ名のバリデーション
-		if err := validateRepositoryName(req.Name); err != nil {
+		if err := validateRepositoryName(req.Name, req.Group); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
 
 		// リポジトリの作成
-		err = createRepository(req.Name)
+		err = createRepository(req.Name, req.Group)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -1220,7 +1221,7 @@ func getFileLastModified(repoPath string, filePath string) time.Time {
 }
 
 // validateRepositoryName は新規リポジトリ名のバリデーション
-func validateRepositoryName(name string) error {
+func validateRepositoryName(name string, group string) error {
 	// 空のチェック
 	if name == "" {
 		return fmt.Errorf("リポジトリ名が指定されていません")
@@ -1232,9 +1233,13 @@ func validateRepositoryName(name string) error {
 		return fmt.Errorf("リポジトリ名には英数字、ハイフン、アンダースコアのみ使用できます")
 	}
 	
-	groupName := "git"
+	// グループ名が指定されていない場合はデフォルトの "git" を使用
+	if group == "" {
+		group = "git"
+	}
+	
 	// 既存のリポジトリと名前が重複していないかチェック
-	repoPath := filepath.Join(filepath.Join(GitRepositoryHome, groupName), name+".git")
+	repoPath := filepath.Join(filepath.Join(GitRepositoryHome, group), name+".git")
 	if _, err := os.Stat(repoPath); err == nil {
 		return fmt.Errorf("リポジトリ '%s' は既に存在します", name)
 	}
@@ -1243,8 +1248,16 @@ func validateRepositoryName(name string) error {
 }
 
 // createRepository は新規ベアリポジトリを作成する
-func createRepository(name string) error {
-	groupName, baseName := splitRepositoryName(name);
+func createRepository(name string, group string) error {
+	// グループ名が指定されていない場合はsplitRepositoryNameでグループ名を取得してみる
+	// これは後方互換性のためと、name内にグループパスが含まれている場合の対応
+	var groupName, baseName string
+	if group == "" {
+		groupName, baseName = splitRepositoryName(name)
+	} else {
+		groupName = group
+		baseName = name
+	}
 
 	// リポジトリのパスを構築
 	repoPath := filepath.Join(filepath.Join(GitRepositoryHome, groupName), baseName+".git")

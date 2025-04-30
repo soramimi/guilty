@@ -7,7 +7,10 @@ const createRepoApp = Vue.createApp({
       isSubmitting: false,
       error: null,
       success: null,
-      validationError: null
+      validationError: null,
+      groups: [],
+      selectedGroup: 'git',
+      loadingGroups: true
     };
   },
   computed: {
@@ -24,7 +27,7 @@ const createRepoApp = Vue.createApp({
       <div v-if="success" class="alert alert-success">
         {{ success }}
         <div class="mt-3">
-          <a :href="'/repository/' + encodeURIComponent(repositoryName)" class="btn btn-primary">リポジトリを表示する</a>
+          <a :href="'/repository/' + encodeURIComponent(selectedGroup) + '/' + encodeURIComponent(repositoryName)" class="btn btn-primary">リポジトリを表示する</a>
         </div>
       </div>
 
@@ -39,7 +42,24 @@ const createRepoApp = Vue.createApp({
           </div>
           <div class="card-body">
             <form @submit.prevent="createRepository">
-              <div class="form-group">
+              <div class="form-group mb-3">
+                <label for="groupSelect">グループ</label>
+                <select 
+                  id="groupSelect" 
+                  class="form-control" 
+                  v-model="selectedGroup"
+                  :disabled="loadingGroups || isSubmitting"
+                >
+                  <option v-for="group in groups" :key="group" :value="group">
+                    {{ group }}
+                  </option>
+                </select>
+                <small class="form-text text-muted">
+                  リポジトリを作成するグループを選択してください。
+                </small>
+              </div>
+              
+              <div class="form-group mb-3">
                 <label for="repositoryName">リポジトリ名</label>
                 <input 
                   type="text" 
@@ -70,7 +90,30 @@ const createRepoApp = Vue.createApp({
       </div>
     </div>
   `,
+  created() {
+    // URLからグループ名を取得（もしあれば）
+    const urlParams = new URLSearchParams(window.location.search);
+    const groupParam = urlParams.get('group');
+    if (groupParam) {
+      this.selectedGroup = groupParam;
+    }
+    
+    this.fetchGroups();
+  },
   methods: {
+    fetchGroups() {
+      // グループ一覧を取得
+      this.loadingGroups = true;
+      axios.get('/api/groups')
+        .then(response => {
+          this.groups = response.data;
+          this.loadingGroups = false;
+        })
+        .catch(error => {
+          this.error = `グループ一覧の取得に失敗しました: ${error.message}`;
+          this.loadingGroups = false;
+        });
+    },
     createRepository() {
       // 入力値の検証
       if (!this.repositoryName.trim()) {
@@ -91,11 +134,12 @@ const createRepoApp = Vue.createApp({
       
       // APIリクエストを送信
       axios.post('/api/repositories', {
-        name: this.repositoryName
+        name: this.repositoryName,
+        group: this.selectedGroup
       })
         .then(response => {
           this.isSubmitting = false;
-          this.success = `リポジトリ ${this.repositoryName} を作成しました！`;
+          this.success = `リポジトリ ${this.selectedGroup}/${this.repositoryName} を作成しました！`;
         })
         .catch(error => {
           this.isSubmitting = false;

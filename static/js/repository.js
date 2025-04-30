@@ -73,9 +73,19 @@ new Vue({
       const path = window.location.pathname;
       return path.substring('/repository/'.length);
     },
+    groupName() {
+      const parts = this.repoPath.split('/');
+      if (parts.length >= 2) {
+        return parts[0];
+      }
+      return 'git'; // デフォルトグループ
+    },
     repoName() {
       const parts = this.repoPath.split('/');
-      return parts[0];
+      if (parts.length >= 2) {
+        return parts[1];
+      }
+      return parts[0]; // グループが指定されていない場合
     },
     currentViewPath() {
       return this.currentPath ? this.currentPath : 'ルートディレクトリ';
@@ -88,6 +98,10 @@ new Vue({
       return this.files.filter(file => 
         file.name.toLowerCase().includes(query)
       );
+    },
+    fullRepoPath() {
+      // グループ名とリポジトリ名を含む完全パス
+      return `${this.groupName}/${this.repoName}`;
     }
   },
   template: `
@@ -357,7 +371,12 @@ git push origin master</pre>
       });
       this.currentPath = directory.path;
       
-      axios.get(`/api/directory/${encodeURIComponent(this.repoName)}/${encodeURIComponent(directory.path)}`)
+      // グループ名とリポジトリ名を別々にエンコードして、スラッシュがエンコードされないようにする
+      const encodedGroupName = encodeURIComponent(this.groupName);
+      const encodedRepoName = encodeURIComponent(this.repoName);
+      const encodedDirPath = encodeURIComponent(directory.path);
+      
+      axios.get(`/api/directory/${encodedGroupName}/${encodedRepoName}/${encodedDirPath}`)
         .then(response => {
           this.files = response.data;
           this.loading = false;
@@ -383,7 +402,12 @@ git push origin master</pre>
         this.modalJustOpened = false;
       }, 10);
       
-      axios.get(`/api/file/${encodeURIComponent(this.repoName)}/${encodeURIComponent(file.path)}`)
+      // グループ名とリポジトリ名を別々にエンコードして、スラッシュがエンコードされないようにする
+      const encodedGroupName = encodeURIComponent(this.groupName);
+      const encodedRepoName = encodeURIComponent(this.repoName);
+      const encodedFilePath = encodeURIComponent(file.path);
+      
+      axios.get(`/api/file/${encodedGroupName}/${encodedRepoName}/${encodedFilePath}`)
         .then(response => {
           this.fileContent = response.data.content;
           this.isBinaryFile = response.data.isBinary;
@@ -541,7 +565,12 @@ git push origin master</pre>
       this.directoryStack = this.directoryStack.slice(0, index + 1);
       this.currentPath = targetDir.path;
       
-      axios.get(`/api/directory/${encodeURIComponent(this.repoName)}/${encodeURIComponent(targetDir.path)}`)
+      // グループ名とリポジトリ名を別々にエンコードして、スラッシュがエンコードされないようにする
+      const encodedGroupName = encodeURIComponent(this.groupName);
+      const encodedRepoName = encodeURIComponent(this.repoName);
+      const encodedDirPath = encodeURIComponent(targetDir.path);
+      
+      axios.get(`/api/directory/${encodedGroupName}/${encodedRepoName}/${encodedDirPath}`)
         .then(response => {
           this.files = response.data;
           this.loading = false;

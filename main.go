@@ -364,7 +364,6 @@ func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	// GETリクエストの場合はリポジトリの詳細を返す
 	if r.Method == http.MethodGet {
 		repoPath, err := filepath.Abs(filepath.Join(GitRepositoryHome, groupName, repoName) + ".git")
-		log.Printf("repoPath: %s", repoPath);
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "無効なリポジトリパス"})
@@ -748,6 +747,69 @@ func getRepositoryFiles(repoPath string) ([]GitFile, error) {
 	return files, nil
 }
 
+// 特定のディレクトリ内のファイル一覧を取得する
+func getDirectoryContents(repoPath, dirPath string) ([]GitFile, error) {
+	var files []GitFile
+	var cmd *exec.Cmd
+
+	cmd = exec.Command("git", "--git-dir="+repoPath, "ls-tree", "HEAD:"+dirPath)
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	// git ls-tree の出力を解析
+	// 各行の形式: <mode> <type> <object> <file>
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+
+		parts := strings.Fields(line)
+		if len(parts) < 4 {
+			continue
+		}
+
+		fileType := "file"
+		if parts[1] == "tree" {
+			fileType = "dir"
+		}
+
+		// ファイル名を取得（最後のフィールド、複数単語の場合もある）
+		fileName := strings.Join(parts[3:], " ")
+
+		var fileSize int64 = 0
+		if fileType == "file" {
+			// ファイルサイズを取得（blob の場合のみ）
+			fileSize = getGitObjectSize(repoPath, parts[2], true)
+		}
+
+		files = append(files, GitFile{
+			Name:         fileName,
+			Path:         filepath.Join(dirPath, fileName),
+			Type:         fileType,
+			Size:         fileSize,
+			LastModified: getFileLastModified(repoPath, filepath.Join(dirPath, fileName)),
+		})
+	}
+
+	// ファイル一覧をソート
+	// 1. ディレクトリを先に
+	// 2. 大文字小文字を区別せずに名前順に
+	sort.Slice(files, func(i, j int) bool {
+		// タイプが異なる場合はディレクトリが先
+		if files[i].Type != files[j].Type {
+			return files[i].Type == "dir"
+		}
+		// タイプが同じ場合は名前の昇順（大文字小文字区別なし）
+		return strings.ToLower(files[i].Name) < strings.ToLower(files[j].Name)
+	})
+
+	return files, nil
+}
+
 // ファイルシステムから直接ファイル一覧を取得（git ls-tree が使えない場合のフォールバック）
 func getDirectoryFilesFromFilesystem(dirPath string) ([]GitFile, error) {
 	var files []GitFile
@@ -880,38 +942,38 @@ func directoryContentsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Methods", "GET")
 
 	// URLからパラメータを取得
-	encodedRepoPath := strings.TrimPrefix(r.URL.Path, "/api/directory/")
-	log.Printf("encodedRepoPath: %s", encodedRepoPath);
-	repoPathParts := strings.SplitN(encodedRepoPath, "/", 2)
-
-	if len(repoPathParts) == 0 {
+	encodedPath := strings.TrimPrefix(r.URL.Path, "/api/directory/")
+	log.Println("encodedPath:", encodedPath)
+	
+	// リポジトリパスとディレクトリパスを分離する
+	// URLパスを3つの部分（グループ名、リポジトリ名、ディレクトリパス）に分割
+	parts := strings.SplitN(encodedPath, "/", 3)
+	if len(parts) < 2 { // ディレクトリパスはオプション
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "無効なリポジトリパス"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "無効なファイルパス形式です。形式: group/repo[/dirpath]"})
 		return
 	}
 
-	// リポジトリパスの解決
-	repoName, err := url.PathUnescape(repoPathParts[0])
+	// グループ名
+	groupName, err := url.PathUnescape(parts[0])
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "無効なリポジトリパス"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "無効なグループ名"})
 		return
 	}
 
-	groupName := "git"
-	repoPath := filepath.Join(filepath.Join(GitRepositoryHome, groupName), repoName)
-
-	// リポジトリの存在確認
-	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "リポジトリが見つかりません"})
+	// リポジトリ名
+	repoName, err := url.PathUnescape(parts[1])
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "無効なリポジトリ名"})
 		return
 	}
 
-	// ディレクトリパスの解決
+	// ディレクトリパス部分（オプション）
 	var dirPath string
-	if len(repoPathParts) > 1 {
-		dirPath, err = url.PathUnescape(repoPathParts[1])
+	if len(parts) > 2 {
+		dirPath, err = url.PathUnescape(parts[2])
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "無効なディレクトリパス"})
@@ -921,10 +983,24 @@ func directoryContentsHandler(w http.ResponseWriter, r *http.Request) {
 		dirPath = ""
 	}
 
+	log.Println("groupName:", groupName)
+	log.Println("repoName:", repoName)
+	log.Println("dirPath:", dirPath)
+
+	// リポジトリの完全パスを構築
+	fullRepoPath := filepath.Join(filepath.Join(GitRepositoryHome, groupName), repoName+".git")
+
+	// リポジトリの存在確認
+	if _, err := os.Stat(fullRepoPath); os.IsNotExist(err) {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "リポジトリが見つかりません"})
+		return
+	}
+
 	// ベアリポジトリの場合は、特別な処理
 	if dirPath == "" {
 		// ベアリポジトリのルートディレクトリは既に処理済み
-		files, err := getRepositoryFiles(repoPath)
+		files, err := getRepositoryFiles(fullRepoPath)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "ディレクトリ内容の取得に失敗しました: " + err.Error()})
@@ -937,10 +1013,10 @@ func directoryContentsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ディレクトリパスの作成
-	fullDirPath := filepath.Join(repoPath, dirPath)
+	fullDirPath := filepath.Join(fullRepoPath, dirPath)
 
 	// パスがリポジトリの外に出ていないか確認（パス走査攻撃の防止）
-	absRepoPath, _ := filepath.Abs(repoPath)
+	absRepoPath, _ := filepath.Abs(fullRepoPath)
 	absDirPath, _ := filepath.Abs(fullDirPath)
 	if !strings.HasPrefix(absDirPath, absRepoPath) {
 		w.WriteHeader(http.StatusBadRequest)
@@ -949,7 +1025,7 @@ func directoryContentsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ディレクトリの内容を取得（git ls-treeを使用）
-	files, err := getDirectoryContents(repoPath, dirPath)
+	files, err := getDirectoryContents(fullRepoPath, dirPath)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "ディレクトリ内容の取得に失敗しました: " + err.Error()})
@@ -960,69 +1036,6 @@ func directoryContentsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(files)
 }
 
-// 特定のディレクトリ内のファイル一覧を取得する
-func getDirectoryContents(repoPath, dirPath string) ([]GitFile, error) {
-	var files []GitFile
-	var cmd *exec.Cmd
-
-	cmd = exec.Command("git", "--git-dir="+repoPath, "ls-tree", "HEAD:"+dirPath)
-
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, err
-	}
-
-	// git ls-tree の出力を解析
-	// 各行の形式: <mode> <type> <object> <file>
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	for _, line := range lines {
-		if line == "" {
-			continue
-		}
-
-		parts := strings.Fields(line)
-		if len(parts) < 4 {
-			continue
-		}
-
-		fileType := "file"
-		if parts[1] == "tree" {
-			fileType = "dir"
-		}
-
-		// ファイル名を取得（最後のフィールド、複数単語の場合もある）
-		fileName := strings.Join(parts[3:], " ")
-
-		var fileSize int64 = 0
-		if fileType == "file" {
-			// ファイルサイズを取得（blob の場合のみ）
-			fileSize = getGitObjectSize(repoPath, parts[2], true)
-		}
-
-		files = append(files, GitFile{
-			Name:         fileName,
-			Path:         filepath.Join(dirPath, fileName),
-			Type:         fileType,
-			Size:         fileSize,
-			LastModified: getFileLastModified(repoPath, filepath.Join(dirPath, fileName)),
-		})
-	}
-
-	// ファイル一覧をソート
-	// 1. ディレクトリを先に
-	// 2. 大文字小文字を区別せずに名前順に
-	sort.Slice(files, func(i, j int) bool {
-		// タイプが異なる場合はディレクトリが先
-		if files[i].Type != files[j].Type {
-			return files[i].Type == "dir"
-		}
-		// タイプが同じ場合は名前の昇順（大文字小文字区別なし）
-		return strings.ToLower(files[i].Name) < strings.ToLower(files[j].Name)
-	})
-
-	return files, nil
-}
-
 // fileContentsHandler はGitリポジトリ内のファイル内容を返す
 func fileContentsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -1031,35 +1044,54 @@ func fileContentsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// URLからパラメータを取得
 	encodedPath := strings.TrimPrefix(r.URL.Path, "/api/file/")
-	pathParts := strings.SplitN(encodedPath, "/", 2)
-
-	if len(pathParts) < 2 {
+	log.Println("encodedPath:", encodedPath)
+	
+	// リポジトリパスとファイルパスを分離する
+	// URLパスを3つの部分（グループ名、リポジトリ名、ファイルパス）に分割
+	parts := strings.SplitN(encodedPath, "/", 3)
+	if len(parts) < 3 {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "無効なファイルパス"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "無効なファイルパス形式です。形式: group/repo/filepath"})
 		return
 	}
 
-	// リポジトリ名とファイルパスの解決
-	repoName, err := url.PathUnescape(pathParts[0])
+	// グループ名
+	groupName, err := url.PathUnescape(parts[0])
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "無効なグループ名"})
+		return
+	}
+
+	// リポジトリ名
+	repoName, err := url.PathUnescape(parts[1])
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "無効なリポジトリ名"})
 		return
 	}
 
-	filePath, err := url.PathUnescape(pathParts[1])
+	// ファイルパス部分
+	filePath, err := url.PathUnescape(parts[2])
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "無効なファイルパス"})
 		return
 	}
 
-	groupName := "git"
-	// リポジトリパスの構築
-	repoPath := filepath.Join(filepath.Join(GitRepositoryHome, groupName), repoName)
+	// 完全なリポジトリパス
+	repoPath := groupName + "/" + repoName
+
+	log.Println("groupName:", groupName)
+	log.Println("repoName:", repoName)
+	log.Println("repoPath:", repoPath)
+	log.Println("filePath:", filePath)
+
+	// リポジトリの完全パスを構築
+	fullRepoPath := filepath.Join(filepath.Join(GitRepositoryHome, groupName), repoName+".git")
 
 	// リポジトリの存在確認
-	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
+	if _, err := os.Stat(fullRepoPath); os.IsNotExist(err) {
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]string{"error": "リポジトリが見つかりません"})
 		return
@@ -1070,12 +1102,12 @@ func fileContentsHandler(w http.ResponseWriter, r *http.Request) {
 	isBare := false
 
 	// 通常リポジトリのチェック
-	if _, err := os.Stat(filepath.Join(repoPath, ".git")); err == nil {
+	if _, err := os.Stat(filepath.Join(fullRepoPath, ".git")); err == nil {
 		isNormal = true
 	}
 
 	// ベアリポジトリのチェック
-	if _, err := os.Stat(filepath.Join(repoPath, "HEAD")); err == nil && !isNormal {
+	if _, err := os.Stat(filepath.Join(fullRepoPath, "HEAD")); err == nil && !isNormal {
 		isBare = true
 	}
 
@@ -1086,7 +1118,7 @@ func fileContentsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ファイル内容の取得
-	content, isBinary, err := getFileContent(repoPath, filePath, isNormal, isBare)
+	content, isBinary, err := getFileContent(fullRepoPath, filePath, isNormal, isBare)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "ファイル内容の取得に失敗しました: " + err.Error()})
@@ -1238,31 +1270,31 @@ func deleteRepository(name string) error {
 	newPath := repoPath + ".deleted"
 
 	// 既に削除済みのリポジトリがある場合は、それを先に完全に削除
-	if _, err := os.Stat(newPath); err == nil {
-		// 削除する前にアクセス権限を変更（chmod 755）して読み書き可能にする
-		err = os.Chmod(newPath, 0755)
-		if err != nil {
-			log.Printf("警告: 既存の削除済みリポジトリの権限変更に失敗しました: %v", err)
+	if _, statErr := os.Stat(newPath); statErr == nil {
+		// 削除する前にアクセス権を変更（chmod 755）して読み書き可能にする
+		chmodErr := os.Chmod(newPath, 0755)
+		if chmodErr != nil {
+			log.Printf("警告: 既存の削除済みリポジトリの権限変更に失敗しました: %v", chmodErr)
 			// 権限変更に失敗してもディレクトリ削除を試みる
 		}
 		
-		err := os.RemoveAll(newPath)
-		if err != nil {
-			return fmt.Errorf("既存の削除済みリポジトリの削除に失敗しました: %w", err)
+		removeErr := os.RemoveAll(newPath)
+		if removeErr != nil {
+			return fmt.Errorf("既存の削除済みリポジトリの削除に失敗しました: %w", removeErr)
 		}
 	}
 
 	// リポジトリの名前を変更
-	err := os.Rename(repoPath, newPath)
-	if err != nil {
-		return fmt.Errorf("リポジトリの名前変更に失敗しました: %w", err)
+	renameErr := os.Rename(repoPath, newPath)
+	if renameErr != nil {
+		return fmt.Errorf("リポジトリの名前変更に失敗しました: %w", renameErr)
 	}
 
 	// 権限を変更（読み書き禁止: chmod 000）
-	err = os.Chmod(newPath, 0000)
-	if err != nil {
+	chmodErr := os.Chmod(newPath, 0000)
+	if chmodErr != nil {
 		// 権限変更に失敗した場合でも、名前の変更は成功しているので警告だけ出して続行
-		log.Printf("警告: リポジトリのアクセス権限変更に失敗しました: %v", err)
+		log.Printf("警告: リポジトリのアクセス権限変更に失敗しました: %v", chmodErr)
 	}
 
 	return nil

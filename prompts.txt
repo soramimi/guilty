@@ -82,3 +82,4 @@ todoに書かれている作業を実行し、完了したアイテムはdoneセ
 - `repository.js`の`deleteRepository()`関数の`const apiUrl = `/api/repository/${encodeURIComponent(repoNameToDelete)}`;`の部分でグループ名が考慮されていません。修正してください。
 - リポジトリの削除後にトップページへリダイレクトする時、選択されているグループ名を維持してください。
 - `main.js`内の`${encodeURIComponent(groupName)}/${encodeURIComponent(repoName)}`の部分を共通化してください。
+- 現在までの修正に合わせて、`README.md`（英語）と`spec.md`（日本語）を更新してください。

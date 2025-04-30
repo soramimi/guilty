@@ -9,6 +9,7 @@ Guilty is a web-based Git repository manager that provides simple repository man
 ## Features
 
 - **Repository Overview**: View all Git repositories in a centralized dashboard
+- **Repository Grouping**: Organize repositories in logical groups
 - **Repository Creation**: Create new bare Git repositories with validation
 - **Repository Deletion**: Safely delete repositories (with logical deletion approach)
 - **File Browsing**: Navigate through repository files and directories
@@ -48,7 +49,7 @@ If a `git` account already exists on your system and you cannot create one with 
    sudo ln -s /mnt/git git
    ```
 
-This setup ensures that repositories can be accessed using the format: `git@hostname:git/repository.git`
+This setup ensures that repositories can be accessed using the format: `git@hostname:group/repository.git`
 
 ## Installation
 
@@ -74,17 +75,27 @@ sudo systemctl start guilty
 
 By default, Guilty looks for Git repositories in `/mnt/git`. If you need to change this location, modify the `GitRepositoryRoot` constant in the source code before building.
 
-The hostname used for Git clone URLs defaults to `localhost` but can be customized.
+The hostname used for Git clone URLs defaults to `localhost` but can be customized using a meta tag in the HTML templates.
 
 ## Usage
 
 Once running, access the web interface at: http://localhost:8000
 
 From there you can:
-- Browse existing repositories
-- Create new repositories
+- Browse existing repositories organized by groups
+- Filter repositories by group
+- Create new repositories within specific groups
 - View file contents
 - Delete repositories
+
+## Repository Groups
+
+Guilty organizes repositories into groups:
+- Groups are represented by subdirectories in the `/mnt/git` directory
+- The default group is `git`
+- Groups with special characters (except `-` and `_`) are excluded
+- The group `git-shell-commands` is specifically excluded
+- Repository URLs follow the pattern: `git@hostname:group/repository.git`
 
 ## Development
 
@@ -98,3 +109,7 @@ make build
 # Clean build artifacts
 make clean
 ```
+
+## JavaScript Utilities
+
+Guilty includes a JavaScript utilities library (`GuiltyUtils`) that provides consistent URL generation functions for interacting with the API endpoints and navigating between pages. This ensures proper URL encoding and consistent URL patterns throughout the application.

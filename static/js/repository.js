@@ -371,12 +371,16 @@ git push origin master</pre>
       });
       this.currentPath = directory.path;
       
-      // グループ名とリポジトリ名を別々にエンコードして、スラッシュがエンコードされないようにする
-      const encodedGroupName = encodeURIComponent(this.groupName);
-      const encodedRepoName = encodeURIComponent(this.repoName);
-      const encodedDirPath = encodeURIComponent(directory.path);
+      // 修正: パスを適切な形式でURLに組み込む
+      // サブディレクトリを / で区切って処理するため、パス全体をエンコードしない
+      const groupName = encodeURIComponent(this.groupName);
+      const repoName = encodeURIComponent(this.repoName);
       
-      axios.get(`/api/directory/${encodedGroupName}/${encodedRepoName}/${encodedDirPath}`)
+      // パスの各部分を保持したままURLを構築
+      const parts = directory.path.split('/');
+      const urlPath = parts.map(part => encodeURIComponent(part)).join('/');
+      
+      axios.get(`/api/directory/${groupName}/${repoName}/${urlPath}`)
         .then(response => {
           this.files = response.data;
           this.loading = false;
@@ -402,12 +406,15 @@ git push origin master</pre>
         this.modalJustOpened = false;
       }, 10);
       
-      // グループ名とリポジトリ名を別々にエンコードして、スラッシュがエンコードされないようにする
-      const encodedGroupName = encodeURIComponent(this.groupName);
-      const encodedRepoName = encodeURIComponent(this.repoName);
-      const encodedFilePath = encodeURIComponent(file.path);
+      // グループ名とリポジトリ名を別々にエンコード
+      const groupName = encodeURIComponent(this.groupName);
+      const repoName = encodeURIComponent(this.repoName);
       
-      axios.get(`/api/file/${encodedGroupName}/${encodedRepoName}/${encodedFilePath}`)
+      // パスの各部分を保持したままURLを構築
+      const parts = file.path.split('/');
+      const urlPath = parts.map(part => encodeURIComponent(part)).join('/');
+      
+      axios.get(`/api/file/${groupName}/${repoName}/${urlPath}`)
         .then(response => {
           this.fileContent = response.data.content;
           this.isBinaryFile = response.data.isBinary;
@@ -565,12 +572,15 @@ git push origin master</pre>
       this.directoryStack = this.directoryStack.slice(0, index + 1);
       this.currentPath = targetDir.path;
       
-      // グループ名とリポジトリ名を別々にエンコードして、スラッシュがエンコードされないようにする
-      const encodedGroupName = encodeURIComponent(this.groupName);
-      const encodedRepoName = encodeURIComponent(this.repoName);
-      const encodedDirPath = encodeURIComponent(targetDir.path);
+      // グループ名とリポジトリ名をエンコード
+      const groupName = encodeURIComponent(this.groupName);
+      const repoName = encodeURIComponent(this.repoName);
       
-      axios.get(`/api/directory/${encodedGroupName}/${encodedRepoName}/${encodedDirPath}`)
+      // パスの各部分を保持したままURLを構築
+      const parts = targetDir.path.split('/');
+      const urlPath = parts.map(part => encodeURIComponent(part)).join('/');
+      
+      axios.get(`/api/directory/${groupName}/${repoName}/${urlPath}`)
         .then(response => {
           this.files = response.data;
           this.loading = false;

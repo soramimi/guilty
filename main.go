@@ -943,37 +943,52 @@ func directoryContentsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// URLからパラメータを取得
 	encodedPath := strings.TrimPrefix(r.URL.Path, "/api/directory/")
-	log.Println("encodedPath:", encodedPath)
 	
-	// リポジトリパスとディレクトリパスを分離する
-	// URLパスを3つの部分（グループ名、リポジトリ名、ディレクトリパス）に分割
-	parts := strings.SplitN(encodedPath, "/", 3)
-	if len(parts) < 2 { // ディレクトリパスはオプション
+	// 最初の2つのスラッシュの位置を特定
+	firstSlashPos := strings.Index(encodedPath, "/")
+	if firstSlashPos < 0 {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "無効なファイルパス形式です。形式: group/repo[/dirpath]"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "無効なパス形式です（グループ名がありません）"})
 		return
 	}
-
-	// グループ名
-	groupName, err := url.PathUnescape(parts[0])
+	
+	// リポジトリ名のスラッシュ位置を特定
+	secondSlashPos := strings.Index(encodedPath[firstSlashPos+1:], "/")
+	
+	// グループ名とリポジトリ名を取得
+	encodedGroupName := encodedPath[:firstSlashPos]
+	var encodedRepoName, encodedDirPath string
+	
+	if secondSlashPos < 0 {
+		// ディレクトリパスが指定されていない場合
+		encodedRepoName = encodedPath[firstSlashPos+1:]
+		encodedDirPath = ""
+	} else {
+		// ディレクトリパスが指定されている場合
+		secondSlashPos += firstSlashPos + 1 // path全体の中での位置に調整
+		encodedRepoName = encodedPath[firstSlashPos+1:secondSlashPos]
+		encodedDirPath = encodedPath[secondSlashPos+1:]
+	}
+	
+	// デコード
+	groupName, err := url.PathUnescape(encodedGroupName)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "無効なグループ名"})
 		return
 	}
-
-	// リポジトリ名
-	repoName, err := url.PathUnescape(parts[1])
+	
+	repoName, err := url.PathUnescape(encodedRepoName)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "無効なリポジトリ名"})
 		return
 	}
-
-	// ディレクトリパス部分（オプション）
+	
+	// ディレクトリパス部分のデコード - %2Fもデコードされるように
 	var dirPath string
-	if len(parts) > 2 {
-		dirPath, err = url.PathUnescape(parts[2])
+	if encodedDirPath != "" {
+		dirPath, err = url.PathUnescape(encodedDirPath)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "無効なディレクトリパス"})
@@ -982,10 +997,6 @@ func directoryContentsHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		dirPath = ""
 	}
-
-	log.Println("groupName:", groupName)
-	log.Println("repoName:", repoName)
-	log.Println("dirPath:", dirPath)
 
 	// リポジトリの完全パスを構築
 	fullRepoPath := filepath.Join(filepath.Join(GitRepositoryHome, groupName), repoName+".git")
@@ -1044,49 +1055,51 @@ func fileContentsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// URLからパラメータを取得
 	encodedPath := strings.TrimPrefix(r.URL.Path, "/api/file/")
-	log.Println("encodedPath:", encodedPath)
 	
-	// リポジトリパスとファイルパスを分離する
-	// URLパスを3つの部分（グループ名、リポジトリ名、ファイルパス）に分割
-	parts := strings.SplitN(encodedPath, "/", 3)
-	if len(parts) < 3 {
+	// 最初の2つのスラッシュの位置を特定
+	firstSlashPos := strings.Index(encodedPath, "/")
+	if firstSlashPos < 0 {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "無効なファイルパス形式です。形式: group/repo/filepath"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "無効なパス形式です（グループ名がありません）"})
 		return
 	}
-
-	// グループ名
-	groupName, err := url.PathUnescape(parts[0])
+	
+	secondSlashPos := strings.Index(encodedPath[firstSlashPos+1:], "/")
+	if secondSlashPos < 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "無効なパス形式です（リポジトリ名がありません）"})
+		return
+	}
+	secondSlashPos += firstSlashPos + 1 // path全体の中での位置に調整
+	
+	// グループ名とリポジトリ名部分を取得
+	encodedGroupName := encodedPath[:firstSlashPos]
+	encodedRepoName := encodedPath[firstSlashPos+1:secondSlashPos]
+	encodedFilePath := encodedPath[secondSlashPos+1:]
+	
+	// デコード
+	groupName, err := url.PathUnescape(encodedGroupName)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "無効なグループ名"})
 		return
 	}
-
-	// リポジトリ名
-	repoName, err := url.PathUnescape(parts[1])
+	
+	repoName, err := url.PathUnescape(encodedRepoName)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "無効なリポジトリ名"})
 		return
 	}
-
-	// ファイルパス部分
-	filePath, err := url.PathUnescape(parts[2])
+	
+	// ファイルパス部分のデコード - %2Fもデコードされるように
+	filePath, err := url.PathUnescape(encodedFilePath)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "無効なファイルパス"})
 		return
 	}
-
-	// 完全なリポジトリパス
-	repoPath := groupName + "/" + repoName
-
-	log.Println("groupName:", groupName)
-	log.Println("repoName:", repoName)
-	log.Println("repoPath:", repoPath)
-	log.Println("filePath:", filePath)
-
+	
 	// リポジトリの完全パスを構築
 	fullRepoPath := filepath.Join(filepath.Join(GitRepositoryHome, groupName), repoName+".git")
 

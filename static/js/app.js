@@ -77,7 +77,7 @@ const app = Vue.createApp({
           />
         </div>
         <div>
-          <a href="/create-repository" class="btn btn-primary">
+          <a :href="'/create-repository?group=' + encodeURIComponent(selectedGroup)" class="btn btn-primary">
             <i class="fa fa-plus-circle"></i> 新規リポジトリ
           </a>
         </div>

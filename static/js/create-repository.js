@@ -21,7 +21,7 @@ const createRepoApp = Vue.createApp({
   template: `
     <div>
       <div class="mb-3">
-        <a href="/" class="btn btn-outline-secondary">← リポジトリ一覧に戻る</a>
+        <a :href="'/?group=' + encodeURIComponent(selectedGroup)" class="btn btn-outline-secondary">← リポジトリ一覧に戻る</a>
       </div>
 
       <div v-if="success" class="alert alert-success">

@@ -20,7 +20,7 @@ import (
 const ServerPort = 1080
 
 // GitRepositoryHome はGitリポジトリのホームディレクトリを定義します
-const GitRepositoryHome= "/mnt"
+const GitRepositoryHome= "/home/git"
 
 // GitHostName はGitリポジトリのホスト名を定義します（git clone用）
 var GitHostName = "git"
@@ -83,6 +83,9 @@ func main() {
 	// Gitリポジトリ一覧API
 	http.HandleFunc("/api/repositories", repositoriesHandler)
 
+	// グループ一覧API
+	http.HandleFunc("/api/groups", groupsHandler)
+
 	// リポジトリ詳細API
 	http.HandleFunc("/api/repository/", repositoryDetailsHandler)
 
@@ -109,12 +112,16 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	groupName := "git"
+	// クエリパラメータからグループ名を取得（デフォルトは"git"）
+	groupName := r.URL.Query().Get("group")
+	if groupName == "" {
+		groupName = "git"
+	}
 
 	// ホームページのデータを準備
 	data := PageData{
-		Title:        "Git リポジトリ一覧",
-		Message:      groupName + " にあるGitリポジトリ一覧",
+		Title:        "Gitリポジトリ一覧",
+		Message:      groupName + " グループにあるGitリポジトリ一覧",
 		HostName:     GitHostName,
 		BuildVersion: fmt.Sprintf("%d", time.Now().Unix()), // Unixタイムスタンプをバージョンとして使用
 	}
@@ -232,8 +239,14 @@ func repositoriesHandler(w http.ResponseWriter, r *http.Request) {
 
 	// GETリクエストの場合はリポジトリ一覧を返す
 	if r.Method == http.MethodGet {
+		 // URLクエリパラメータからグループ名を取得
+		groupName := r.URL.Query().Get("group")
+		if groupName == "" {
+			// グループ名が指定されていない場合はデフォルトの "git" を使用
+			groupName = "git"
+		}
+
 		// Gitリポジトリを取得
-		groupName := "git"
 		repos, err := getGitRepositories(groupName)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -250,6 +263,31 @@ func repositoriesHandler(w http.ResponseWriter, r *http.Request) {
 	// 未対応のHTTPメソッド
 	w.WriteHeader(http.StatusMethodNotAllowed)
 	json.NewEncoder(w).Encode(map[string]string{"error": "サポートされていないメソッドです"})
+}
+
+// groupsHandler はグループ一覧を返すハンドラー
+func groupsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET")
+
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "サポートされていないメソッドです"})
+		return
+	}
+
+	// グループリストを取得
+	groups, err := getGroupList()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "グループ一覧の取得に失敗しました: " + err.Error()})
+		return
+	}
+
+	// 結果をJSONとして返す
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(groups)
 }
 
 func splitRepositoryName(path string) (group string, name string) {
@@ -478,7 +516,6 @@ func getGitRepositories(groupName string) ([]GitRepository, error) {
 		if err == nil {
 			// ベアリポジトリ
 			repoName := filepath.Base(path)
-			groupName := "git"
 
 			// .git拡張子を削除
 			if strings.HasSuffix(repoName, ".git") {
@@ -487,7 +524,7 @@ func getGitRepositories(groupName string) ([]GitRepository, error) {
 
 			repo := GitRepository{
 				Path: path,
-				Group: groupName,
+				Group: groupName, // 選択されたグループ名を使用
 				Name: repoName,
 				Type: "bare",
 				// クローンURLを生成
@@ -523,6 +560,76 @@ func getGitRepositories(groupName string) ([]GitRepository, error) {
 	})
 
 	return repositories, nil
+}
+
+// getGroupList はGitRepositoryHome内のサブディレクトリ（グループ）をスキャンします
+func getGroupList() ([]string, error) {
+	var groups []string
+
+	// GitRepositoryHomeのディレクトリエントリを取得
+	entries, err := os.ReadDir(GitRepositoryHome)
+	if err != nil {
+		return nil, fmt.Errorf("GitRepositoryHomeのディレクトリ読み取りに失敗しました: %w", err)
+	}
+
+	// 常に'git'グループはデフォルトとして含める
+	hasGitGroup := false
+
+	for _, entry := range entries {
+		// ディレクトリのみを処理
+		if !entry.IsDir() && entry.Type()&os.ModeSymlink == 0 {
+			continue
+		}
+
+		groupName := entry.Name()
+		if groupName == "git" {
+			hasGitGroup = true
+		}
+
+		// シンボリックリンクの場合、実際の対象を確認
+		if entry.Type()&os.ModeSymlink != 0 {
+			// シンボリックリンクのパスを構築
+			entryPath := filepath.Join(GitRepositoryHome, groupName)
+			
+			// シンボリックリンクの実際のターゲットを取得
+			realPath, err := os.Readlink(entryPath)
+			if err != nil {
+				// シンボリックリンクが読めない場合はスキップ
+				continue
+			}
+
+			// 相対パスの場合は絶対パスに変換
+			if !filepath.IsAbs(realPath) {
+				realPath = filepath.Join(GitRepositoryHome, realPath)
+			}
+
+			// リンク先の情報を取得
+			info, err := os.Stat(realPath)
+			if err != nil || !info.IsDir() {
+				// リンク先情報が取得できない、またはディレクトリでない場合はスキップ
+				continue
+			}
+		}
+
+		// 読み取り権限がないディレクトリはスキップ
+		entryPath := filepath.Join(GitRepositoryHome, groupName)
+		info, err := os.Stat(entryPath)
+		if err != nil || info.Mode().Perm()&0444 == 0 {
+			continue
+		}
+
+		groups = append(groups, groupName)
+	}
+
+	// デフォルトの'git'グループが見つからなかった場合は追加
+	if !hasGitGroup {
+		groups = append(groups, "git")
+	}
+
+	// グループ名をアルファベット順にソート
+	sort.Strings(groups)
+
+	return groups, nil
 }
 
 func getLastCommit(repoPath string) *CommitInfo {

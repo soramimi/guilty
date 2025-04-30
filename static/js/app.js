@@ -30,7 +30,10 @@ new Vue({
     repositories: [],
     loading: true,
     error: null,
-    searchQuery: ''
+    searchQuery: '',
+    groups: [],
+    selectedGroup: 'git',
+    loadingGroups: true
   },
   computed: {
     filteredRepositories() {
@@ -48,6 +51,18 @@ new Vue({
   template: `
     <div>
       <div class="d-flex justify-content-between mb-3">
+        <div class="form-group mr-2" style="min-width: 200px;">
+          <select 
+            class="form-control" 
+            v-model="selectedGroup" 
+            @change="onGroupChange"
+            :disabled="loadingGroups"
+          >
+            <option v-for="group in groups" :key="group" :value="group">
+              {{ group }}
+            </option>
+          </select>
+        </div>
         <div class="form-group flex-grow-1 mr-2">
           <input 
             type="text" 
@@ -99,12 +114,29 @@ new Vue({
     </div>
   `,
   created() {
-    this.fetchRepositories();
+    this.fetchGroups();
   },
   methods: {
+    fetchGroups() {
+      // グループ一覧を取得
+      this.loadingGroups = true;
+      axios.get('/api/groups')
+        .then(response => {
+          this.groups = response.data;
+          this.loadingGroups = false;
+          // グループを取得した後にリポジトリを取得
+          this.fetchRepositories();
+        })
+        .catch(error => {
+          this.error = `グループ一覧の取得に失敗しました: ${error.message}`;
+          this.loadingGroups = false;
+          this.loading = false;
+        });
+    },
     fetchRepositories() {
       // APIエンドポイントからリポジトリを取得
-      axios.get('/api/repositories')
+      this.loading = true;
+      axios.get(`/api/repositories?group=${encodeURIComponent(this.selectedGroup)}`)
         .then(response => {
           this.repositories = response.data;
           this.loading = false;
@@ -113,6 +145,10 @@ new Vue({
           this.error = `リポジトリ一覧の取得に失敗しました: ${error.message}`;
           this.loading = false;
         });
+    },
+    onGroupChange() {
+      // グループが変更されたときにリポジトリ一覧を更新
+      this.fetchRepositories();
     }
   }
 });

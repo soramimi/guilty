@@ -21,13 +21,13 @@ const createRepoApp = Vue.createApp({
   template: `
     <div>
       <div class="mb-3">
-        <a :href="'/?group=' + encodeURIComponent(selectedGroup)" class="btn btn-outline-secondary">← リポジトリ一覧に戻る</a>
+        <a :href="getRepositoriesPageUrl(selectedGroup)" class="btn btn-outline-secondary">← リポジトリ一覧に戻る</a>
       </div>
 
       <div v-if="success" class="alert alert-success">
         {{ success }}
         <div class="mt-3">
-          <a :href="'/repository/' + encodeURIComponent(selectedGroup) + '/' + encodeURIComponent(repositoryName)" class="btn btn-primary">リポジトリを表示する</a>
+          <a :href="getRepositoryUrl(selectedGroup, repositoryName)" class="btn btn-primary">リポジトリを表示する</a>
         </div>
       </div>
 
@@ -149,6 +149,12 @@ const createRepoApp = Vue.createApp({
             this.error = 'リポジトリの作成中にエラーが発生しました: ' + error.message;
           }
         });
+    },
+    getRepositoriesPageUrl(group) {
+      return GuiltyUtils.getRepositoriesPageUrl(group);
+    },
+    getRepositoryUrl(group, repositoryName) {
+      return GuiltyUtils.getRepositoryUrl(group, repositoryName);
     }
   }
 });

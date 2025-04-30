@@ -110,7 +110,7 @@ const repositoryApp = Vue.createApp({
   template: `
     <div>
       <div class="mb-3">
-        <a href="/" class="btn btn-outline-secondary">← リポジトリ一覧に戻る</a>
+        <a :href="getRepositoriesPageUrl(groupName)" class="btn btn-outline-secondary">← リポジトリ一覧に戻る</a>
       </div>
       
       <div v-if="loading" class="loading-spinner">
@@ -338,7 +338,7 @@ git push origin master</pre>
       return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     },
     fetchRepositoryDetails() {
-      axios.get(`/api/repository/${this.repoPath}`)
+      axios.get(GuiltyUtils.getApiRepositoryPath(this.groupName, this.repoName))
         .then(response => {
           const details = response.data;
           this.repository = details.repository;
@@ -374,16 +374,7 @@ git push origin master</pre>
       });
       this.currentPath = directory.path;
       
-      // 修正: パスを適切な形式でURLに組み込む
-      // サブディレクトリを / で区切って処理するため、パス全体をエンコードしない
-      const groupName = encodeURIComponent(this.groupName);
-      const repoName = encodeURIComponent(this.repoName);
-      
-      // パスの各部分を保持したままURLを構築
-      const parts = directory.path.split('/');
-      const urlPath = parts.map(part => encodeURIComponent(part)).join('/');
-      
-      axios.get(`/api/directory/${groupName}/${repoName}/${urlPath}`)
+      axios.get(GuiltyUtils.getApiDirectoryPath(this.groupName, this.repoName, directory.path))
         .then(response => {
           this.files = response.data;
           this.loading = false;
@@ -409,15 +400,7 @@ git push origin master</pre>
         this.modalJustOpened = false;
       }, 10);
       
-      // グループ名とリポジトリ名を別々にエンコード
-      const groupName = encodeURIComponent(this.groupName);
-      const repoName = encodeURIComponent(this.repoName);
-      
-      // パスの各部分を保持したままURLを構築
-      const parts = file.path.split('/');
-      const urlPath = parts.map(part => encodeURIComponent(part)).join('/');
-      
-      axios.get(`/api/file/${groupName}/${repoName}/${urlPath}`)
+      axios.get(GuiltyUtils.getApiFilePath(this.groupName, this.repoName, file.path))
         .then(response => {
           this.fileContent = response.data.content;
           this.isBinaryFile = response.data.isBinary;
@@ -498,13 +481,10 @@ git push origin master</pre>
         repoNameToDelete = repoNameToDelete.substring(0, repoNameToDelete.length - 4);
       }
       
-      // URLを正しく構築
-      const apiUrl = `/api/repository/${encodeURIComponent(this.groupName)}/${encodeURIComponent(repoNameToDelete)}`;
-      
       // リポジトリ削除APIを呼び出し
       axios({
         method: 'post',
-        url: apiUrl,
+        url: GuiltyUtils.getApiRepositoryPath(this.groupName, repoNameToDelete),
         data: {
           operation: "delete" // 操作タイプを指定
         },
@@ -519,7 +499,7 @@ git push origin master</pre>
           document.body.classList.remove('modal-open');
           document.body.classList.remove('has-delete-modal'); // 削除モーダル専用クラスを削除
           // ホームページ（リポジトリ一覧）にリダイレクトする際、現在のグループ名を維持
-          window.location.href = `/?group=${encodeURIComponent(this.groupName)}`;
+          window.location.href = GuiltyUtils.getRepositoriesPageUrl(this.groupName);
         })
         .catch(error => {
           // エラー処理
@@ -575,15 +555,7 @@ git push origin master</pre>
       this.directoryStack = this.directoryStack.slice(0, index + 1);
       this.currentPath = targetDir.path;
       
-      // グループ名とリポジトリ名をエンコード
-      const groupName = encodeURIComponent(this.groupName);
-      const repoName = encodeURIComponent(this.repoName);
-      
-      // パスの各部分を保持したままURLを構築
-      const parts = targetDir.path.split('/');
-      const urlPath = parts.map(part => encodeURIComponent(part)).join('/');
-      
-      axios.get(`/api/directory/${groupName}/${repoName}/${urlPath}`)
+      axios.get(GuiltyUtils.getApiDirectoryPath(this.groupName, this.repoName, targetDir.path))
         .then(response => {
           this.files = response.data;
           this.loading = false;
@@ -592,6 +564,9 @@ git push origin master</pre>
           this.error = `ディレクトリの内容を取得できませんでした: ${error.message}`;
           this.loading = false;
         });
+    },
+    getRepositoriesPageUrl(group) {
+      return GuiltyUtils.getRepositoriesPageUrl(group);
     }
   }
 });

@@ -20,7 +20,7 @@ const RepositoryRow = {
     },
     openRepository() {
       // リポジトリ詳細ページに遷移
-      window.location.href = `/repository/${encodeURIComponent(this.repository.group)}/${encodeURIComponent(this.repository.name)}`;
+      window.location.href = GuiltyUtils.getRepositoryUrl(this.repository.group, this.repository.name);
     }
   }
 };
@@ -77,7 +77,7 @@ const app = Vue.createApp({
           />
         </div>
         <div>
-          <a :href="'/create-repository?group=' + encodeURIComponent(selectedGroup)" class="btn btn-primary">
+          <a :href="getCreateRepositoryUrl(selectedGroup)" class="btn btn-primary">
             <i class="fa fa-plus-circle"></i> 新規リポジトリ
           </a>
         </div>
@@ -148,7 +148,7 @@ const app = Vue.createApp({
     fetchRepositories() {
       // APIエンドポイントからリポジトリを取得
       this.loading = true;
-      axios.get(`/api/repositories?group=${encodeURIComponent(this.selectedGroup)}`)
+      axios.get(GuiltyUtils.getRepositoriesApiUrl(this.selectedGroup))
         .then(response => {
           this.repositories = response.data;
           this.loading = false;
@@ -178,6 +178,9 @@ const app = Vue.createApp({
         // ブラウザのタイトルも更新
         document.title = `Guilty - ${this.selectedGroup} グループのリポジトリ一覧`;
       }
+    },
+    getCreateRepositoryUrl(group) {
+      return GuiltyUtils.getCreateRepositoryUrl(group);
     }
   }
 });

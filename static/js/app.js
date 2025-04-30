@@ -33,7 +33,9 @@ new Vue({
     searchQuery: '',
     groups: [],
     selectedGroup: 'git',
-    loadingGroups: true
+    loadingGroups: true,
+    pageTitle: document.querySelector('h1'),
+    pageMessage: document.querySelector('p')
   },
   computed: {
     filteredRepositories() {
@@ -114,6 +116,13 @@ new Vue({
     </div>
   `,
   created() {
+    // URLからグループ名を取得（もしあれば）
+    const urlParams = new URLSearchParams(window.location.search);
+    const groupParam = urlParams.get('group');
+    if (groupParam) {
+      this.selectedGroup = groupParam;
+    }
+    
     this.fetchGroups();
   },
   methods: {
@@ -140,6 +149,9 @@ new Vue({
         .then(response => {
           this.repositories = response.data;
           this.loading = false;
+          
+          // タイトルとメッセージを更新
+          this.updatePageTitle();
         })
         .catch(error => {
           this.error = `リポジトリ一覧の取得に失敗しました: ${error.message}`;
@@ -147,8 +159,22 @@ new Vue({
         });
     },
     onGroupChange() {
+      // URLを更新（ブラウザの履歴に追加）
+      const url = new URL(window.location);
+      url.searchParams.set('group', this.selectedGroup);
+      window.history.pushState({}, '', url);
+      
       // グループが変更されたときにリポジトリ一覧を更新
       this.fetchRepositories();
+    },
+    updatePageTitle() {
+      // ページのタイトルとメッセージを更新
+      if (this.pageTitle && this.pageMessage) {
+        this.pageMessage.textContent = `${this.selectedGroup} グループにあるGitリポジトリ一覧`;
+        
+        // ブラウザのタイトルも更新
+        document.title = `Guilty - ${this.selectedGroup} グループのリポジトリ一覧`;
+      }
     }
   }
 });

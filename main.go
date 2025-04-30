@@ -28,6 +28,11 @@ var GitHostName = "git"
 // GitCloneURLTemplate はクローンURLのテンプレートを定義します
 const GitCloneURLTemplate = "git@%s:%s/%s.git"
 
+// 除外すべきグループ名のパターンを定義
+var GroupNameBlacklist = []*regexp.Regexp{
+	regexp.MustCompile(`^git-shell-commands$`), // git-shell-commands を除外
+}
+
 type PageData struct {
 	Title        string
 	Message      string
@@ -325,11 +330,6 @@ func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 
 	groupName, repoName := splitRepositoryName(decodedPath)
 
-	// .git拡張子を削除
-	if strings.HasSuffix(repoName, ".git") {
-		repoName = strings.TrimSuffix(repoName, ".git")
-	}
-
 	// POSTリクエストの場合はリポジトリを削除する
 	if r.Method == http.MethodPost {
 		// リクエストボディから操作タイプを取得
@@ -364,6 +364,7 @@ func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	// GETリクエストの場合はリポジトリの詳細を返す
 	if r.Method == http.MethodGet {
 		repoPath, err := filepath.Abs(filepath.Join(GitRepositoryHome, groupName, repoName) + ".git")
+		log.Printf("repoPath: %s", repoPath);
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "無効なリポジトリパス"})
@@ -471,7 +472,7 @@ func getDirectories(path string) ([]string, error) {
 			// リンク先がディレクトリの場合のみ追加
 			if info.IsDir() {
 				// リンク先パスを使用
-				entryPath = realPath
+				//entryPath = realPath
 			} else {
 				// ディレクトリでない場合はスキップ
 				continue
@@ -562,12 +563,30 @@ func getGitRepositories(groupName string) ([]GitRepository, error) {
 	return repositories, nil
 }
 
+// グループ名が有効かどうかをチェックする関数
+func isValidGroupName(name string) bool {
+	// 不正な文字のチェック（英数字、ハイフン、アンダースコアのみ許可）
+	validName := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+	if !validName.MatchString(name) {
+		return false
+	}
+
+	// ブラックリストに一致するものは除外
+	for _, pattern := range GroupNameBlacklist {
+		if pattern.MatchString(name) {
+			return false
+		}
+	}
+
+	return true
+}
+
 // getGroupList はGitRepositoryHome内のサブディレクトリ（グループ）をスキャンします
 func getGroupList() ([]string, error) {
 	var groups []string
 
-	// GitRepositoryHomeのディレクトリエントリを取得
-	entries, err := os.ReadDir(GitRepositoryHome)
+	// getDirectories関数を使用してGitRepositoryHome内のディレクトリを取得
+	entries, err := getDirectories(GitRepositoryHome)
 	if err != nil {
 		return nil, fmt.Errorf("GitRepositoryHomeのディレクトリ読み取りに失敗しました: %w", err)
 	}
@@ -575,44 +594,20 @@ func getGroupList() ([]string, error) {
 	// 常に'git'グループはデフォルトとして含める
 	hasGitGroup := false
 
-	for _, entry := range entries {
-		// ディレクトリのみを処理
-		if !entry.IsDir() && entry.Type()&os.ModeSymlink == 0 {
+	for _, entryPath := range entries {
+		// パスからグループ名（ディレクトリ名）を取得
+		groupName := filepath.Base(entryPath)
+
+		// グループ名のバリデーション
+		if !isValidGroupName(groupName) {
 			continue
 		}
-
-		groupName := entry.Name()
+		
 		if groupName == "git" {
 			hasGitGroup = true
 		}
 
-		// シンボリックリンクの場合、実際の対象を確認
-		if entry.Type()&os.ModeSymlink != 0 {
-			// シンボリックリンクのパスを構築
-			entryPath := filepath.Join(GitRepositoryHome, groupName)
-			
-			// シンボリックリンクの実際のターゲットを取得
-			realPath, err := os.Readlink(entryPath)
-			if err != nil {
-				// シンボリックリンクが読めない場合はスキップ
-				continue
-			}
-
-			// 相対パスの場合は絶対パスに変換
-			if !filepath.IsAbs(realPath) {
-				realPath = filepath.Join(GitRepositoryHome, realPath)
-			}
-
-			// リンク先の情報を取得
-			info, err := os.Stat(realPath)
-			if err != nil || !info.IsDir() {
-				// リンク先情報が取得できない、またはディレクトリでない場合はスキップ
-				continue
-			}
-		}
-
 		// 読み取り権限がないディレクトリはスキップ
-		entryPath := filepath.Join(GitRepositoryHome, groupName)
 		info, err := os.Stat(entryPath)
 		if err != nil || info.Mode().Perm()&0444 == 0 {
 			continue
@@ -886,6 +881,7 @@ func directoryContentsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// URLからパラメータを取得
 	encodedRepoPath := strings.TrimPrefix(r.URL.Path, "/api/directory/")
+	log.Printf("encodedRepoPath: %s", encodedRepoPath);
 	repoPathParts := strings.SplitN(encodedRepoPath, "/", 2)
 
 	if len(repoPathParts) == 0 {

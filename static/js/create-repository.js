@@ -1,11 +1,14 @@
-new Vue({
-  el: '#create-repo-app',
-  data: {
-    repositoryName: '',
-    isSubmitting: false,
-    error: null,
-    success: null,
-    validationError: null
+// filepath: /home/soramimi/develop/guilty/static/js/create-repository.js
+
+const createRepoApp = Vue.createApp({
+  data() {
+    return {
+      repositoryName: '',
+      isSubmitting: false,
+      error: null,
+      success: null,
+      validationError: null
+    };
   },
   computed: {
     isNameValid() {
@@ -105,3 +108,6 @@ new Vue({
     }
   }
 });
+
+// アプリケーションをマウント
+createRepoApp.mount('#create-repo-app');

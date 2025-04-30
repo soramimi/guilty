@@ -1,4 +1,6 @@
-Vue.component('file-row', {
+
+// コンポーネントの定義
+const FileRow = {
   props: ['file', 'repoName'],
   template: `
     <tr>
@@ -43,30 +45,32 @@ Vue.component('file-row', {
       this.$emit('open-file', this.file);
     }
   }
-});
+};
 
-new Vue({
-  el: '#repository-app',
-  data: {
-    repository: null,
-    files: [],
-    loading: true,
-    error: null,
-    searchQuery: '',
-    currentPath: '',
-    pathHistory: [],
-    directoryStack: [],
-    selectedFile: null,
-    fileContent: '',
-    fileLoading: false,
-    fileError: null,
-    isBinaryFile: false,
-    showFileModal: false,
-    modalJustOpened: false,
-    showDeleteModal: false, // 削除確認モーダル表示フラグ
-    deleteInProgress: false, // 削除処理中フラグ
-    deleteError: null, // 削除エラーメッセージ
-    hostName: document.querySelector('meta[name="git-host"]')?.content || 'localhost'
+// アプリケーションの作成
+const repositoryApp = Vue.createApp({
+  data() {
+    return {
+      repository: null,
+      files: [],
+      loading: true,
+      error: null,
+      searchQuery: '',
+      currentPath: '',
+      pathHistory: [],
+      directoryStack: [],
+      selectedFile: null,
+      fileContent: '',
+      fileLoading: false,
+      fileError: null,
+      isBinaryFile: false,
+      showFileModal: false,
+      modalJustOpened: false,
+      showDeleteModal: false, // 削除確認モーダル表示フラグ
+      deleteInProgress: false, // 削除処理中フラグ
+      deleteError: null, // 削除エラーメッセージ
+      hostName: document.querySelector('meta[name="git-host"]')?.content || 'localhost'
+    };
   },
   computed: {
     repoPath() {
@@ -314,7 +318,7 @@ git push origin master</pre>
     // モーダル外クリック検出のためのイベントリスナー登録
     document.addEventListener('click', this.handleOutsideClick);
   },
-  destroyed() {
+  unmounted() {
     // コンポーネント破棄時にイベントリスナーを削除
     document.removeEventListener('keydown', this.handleKeyDown);
     document.removeEventListener('click', this.handleOutsideClick);
@@ -592,3 +596,9 @@ git push origin master</pre>
     }
   }
 });
+
+// コンポーネントを登録
+repositoryApp.component('file-row', FileRow);
+
+// アプリケーションをマウント
+repositoryApp.mount('#repository-app');

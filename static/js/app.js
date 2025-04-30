@@ -1,4 +1,5 @@
-Vue.component('repository-row', {
+// グローバルコンポーネントの定義をcreateAppの前に行う
+const RepositoryRow = {
   props: ['repository'],
   template: `
     <tr class="repo-row" @click="openRepository" style="cursor: pointer;">
@@ -22,20 +23,22 @@ Vue.component('repository-row', {
       window.location.href = `/repository/${encodeURIComponent(this.repository.group)}/${encodeURIComponent(this.repository.name)}`;
     }
   }
-});
+};
 
-new Vue({
-  el: '#app',
-  data: {
-    repositories: [],
-    loading: true,
-    error: null,
-    searchQuery: '',
-    groups: [],
-    selectedGroup: 'git',
-    loadingGroups: true,
-    pageTitle: document.querySelector('h1'),
-    pageMessage: document.querySelector('p')
+// アプリケーションインスタンスを作成
+const app = Vue.createApp({
+  data() {
+    return {
+      repositories: [],
+      loading: true,
+      error: null,
+      searchQuery: '',
+      groups: [],
+      selectedGroup: 'git',
+      loadingGroups: true,
+      pageTitle: document.querySelector('h1'),
+      pageMessage: document.querySelector('p')
+    };
   },
   computed: {
     filteredRepositories() {
@@ -178,3 +181,9 @@ new Vue({
     }
   }
 });
+
+// コンポーネントを登録
+app.component('repository-row', RepositoryRow);
+
+// アプリケーションをマウント
+app.mount('#app');

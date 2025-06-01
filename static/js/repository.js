@@ -68,7 +68,8 @@ const repositoryApp = Vue.createApp({
       showDeleteModal: false, // 削除確認モーダル表示フラグ
       deleteInProgress: false, // 削除処理中フラグ
       deleteError: null, // 削除エラーメッセージ
-      hostName: document.querySelector('meta[name="git-host"]')?.content || 'localhost'
+      hostName: document.querySelector('meta[name="git-host"]')?.content || 'localhost',
+      showDropdown: false // ハンバーガーメニューの表示状態
     };
   },
   computed: {
@@ -109,8 +110,18 @@ const repositoryApp = Vue.createApp({
   },
   template: `
     <div>
-      <div class="mb-3">
+      <div class="mb-3 d-flex justify-content-between">
         <a :href="getRepositoriesPageUrl(groupName)" class="btn btn-outline-secondary">← リポジトリ一覧に戻る</a>
+        
+        <!-- ハンバーガーメニュー -->
+        <div class="dropdown position-relative">
+          <button class="btn btn-outline-secondary" type="button" @click="toggleDropdown">
+            &#9776;
+          </button>
+          <div v-if="showDropdown" class="dropdown-menu dropdown-menu-end show position-absolute" style="right: 0; top: 100%;">
+            <a class="dropdown-item text-danger" href="#" @click.prevent="confirmDeleteAndCloseDropdown">リポジトリの削除</a>
+          </div>
+        </div>
       </div>
       
       <div v-if="loading" class="loading-spinner">
@@ -153,13 +164,6 @@ const repositoryApp = Vue.createApp({
                 <small class="text-muted mt-1 d-block">{{ repository.cloneUrl ? '' : 'クローンURLが取得できませんでした' }}</small>
               </dd>
             </dl>
-            
-            <!-- 削除ボタン追加 -->
-            <div class="mt-3 text-right">
-              <button class="btn btn-danger" @click="confirmDelete">
-                <span>リポジトリの削除</span>
-              </button>
-            </div>
           </div>
         </div>
         
@@ -567,7 +571,23 @@ git push origin master</pre>
     },
     getRepositoriesPageUrl(group) {
       return GuiltyUtils.getRepositoriesPageUrl(group);
+    },
+    toggleDropdown() {
+      this.showDropdown = !this.showDropdown;
+    },
+    confirmDeleteAndCloseDropdown() {
+      this.showDropdown = false;
+      this.confirmDelete();
     }
+  },
+  mounted() {
+    // 外部クリックでドロップダウンを閉じる
+    document.addEventListener('click', (event) => {
+      const dropdownContainer = this.$el.querySelector('.dropdown');
+      if (dropdownContainer && !dropdownContainer.contains(event.target)) {
+        this.showDropdown = false;
+      }
+    });
   }
 });
 

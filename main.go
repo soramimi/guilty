@@ -660,7 +660,7 @@ func getLastCommit(repoPath string) *CommitInfo {
 func hasCommits(repoPath string) bool {
 	var cmd *exec.Cmd
 
-	cmd = exec.Command("git", "--git-dir="+repoPath, "rev-list", "--count", "HEAD")
+	cmd = exec.Command("git", "--git-dir="+repoPath, "log", "--all", "-1", "--oneline")
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -668,13 +668,8 @@ func hasCommits(repoPath string) bool {
 		return false
 	}
 
-	// 出力を整数に変換
-	count, err := strconv.ParseInt(strings.TrimSpace(string(output)), 10, 64)
-	if err != nil {
-		return false
-	}
-
-	return count > 0
+	// 出力が空でなければコミットが存在する
+	return strings.TrimSpace(string(output)) != ""
 }
 
 // リポジトリ内のファイル一覧を取得（ルートディレクトリの1階層のみ）

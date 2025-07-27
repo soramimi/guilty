@@ -66,10 +66,11 @@ type GitFile struct {
 
 // RepositoryDetails はリポジトリの詳細情報を含む
 type RepositoryDetails struct {
-	Repository GitRepository `json:"repository"`
-	Files      []GitFile     `json:"files"`
-	Branches   []string      `json:"branches"`
-	Tags       []string      `json:"tags"`
+	Repository   GitRepository `json:"repository"`
+	Files        []GitFile     `json:"files"`
+	Branches     []string      `json:"branches"`
+	Tags         []string      `json:"tags"`
+	CurrentHead  string        `json:"currentHead"`  // 現在のHEADブランチ
 }
 
 // リポジトリ作成リクエスト用の構造体
@@ -100,6 +101,9 @@ func main() {
 
 	// ファイル内容取得API
 	http.HandleFunc("/api/file/", fileContentsHandler)
+
+	// HEADブランチ変更API
+	http.HandleFunc("/api/head/", changeHeadBranchHandler)
 
 	// リポジトリ詳細ページのルーティング
 	http.HandleFunc("/repository/", repositoryPageHandler)
@@ -410,12 +414,19 @@ func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 			tags = []string{}
 		}
 
+		// 現在のHEADブランチを取得
+		currentHead, err := getCurrentHeadBranch(repoPath)
+		if err != nil {
+			currentHead = "" // エラーの場合は空文字列
+		}
+
 		// リポジトリ詳細を組み立て
 		details := RepositoryDetails{
-			Repository: repo,
-			Files:      files,
-			Branches:   branches,
-			Tags:       tags,
+			Repository:  repo,
+			Files:       files,
+			Branches:    branches,
+			Tags:        tags,
+			CurrentHead: currentHead,
 		}
 
 		// 結果をJSONとして返す
@@ -1327,4 +1338,112 @@ func deleteRepository(name string) error {
     }
 
     return nil
+}
+
+// changeHeadBranchHandler はリポジトリのHEADブランチを変更するAPIハンドラー
+func changeHeadBranchHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	// OPTIONSリクエスト（プリフライト）に対する応答
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "POSTメソッドのみサポートしています"})
+		return
+	}
+
+	// リポジトリパスを取得（/api/head/以降の部分）
+	encodedPath := strings.TrimPrefix(r.URL.Path, "/api/head/")
+	// URLエンコードされたパスをデコード
+	decodedPath, err := url.PathUnescape(encodedPath)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "無効なリポジトリパス"})
+		return
+	}
+
+	groupName, repoName := splitRepositoryName(decodedPath)
+
+	// リクエストボディからブランチ名を取得
+	var requestBody map[string]string
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "不正なリクエスト形式"})
+		return
+	}
+
+	branchName := requestBody["branch"]
+	if branchName == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "ブランチ名が指定されていません"})
+		return
+	}
+
+	// HEADブランチを変更
+	err = changeRepositoryHead(groupName, repoName, branchName)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	// 成功レスポンス
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "HEADブランチが変更されました"})
+}
+
+// changeRepositoryHead はリポジトリのHEADブランチを変更する
+func changeRepositoryHead(groupName, repoName, branchName string) error {
+	repoPath := filepath.Join(GitRepositoryHome, groupName, repoName+".git")
+	
+	// リポジトリの存在確認
+	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
+		return fmt.Errorf("リポジトリが見つかりません: %s", repoPath)
+	}
+
+	// 指定されたブランチが存在するかチェック
+	branchRefPath := filepath.Join(repoPath, "refs", "heads", branchName)
+	if _, err := os.Stat(branchRefPath); os.IsNotExist(err) {
+		return fmt.Errorf("ブランチ '%s' が見つかりません", branchName)
+	}
+
+	// HEADファイルを更新
+	headFilePath := filepath.Join(repoPath, "HEAD")
+	headContent := fmt.Sprintf("ref: refs/heads/%s\n", branchName)
+	
+	err := os.WriteFile(headFilePath, []byte(headContent), 0644)
+	if err != nil {
+		return fmt.Errorf("HEADファイルの更新に失敗しました: %w", err)
+	}
+
+	return nil
+}
+
+// getCurrentHeadBranch はリポジトリの現在のHEADブランチを取得する
+func getCurrentHeadBranch(repoPath string) (string, error) {
+	headFilePath := filepath.Join(repoPath, "HEAD")
+	
+	// HEADファイルを読み込み
+	headContent, err := os.ReadFile(headFilePath)
+	if err != nil {
+		return "", fmt.Errorf("HEADファイルの読み込みに失敗しました: %w", err)
+	}
+
+	headStr := strings.TrimSpace(string(headContent))
+	
+	// "ref: refs/heads/ブランチ名" の形式かチェック
+	if strings.HasPrefix(headStr, "ref: refs/heads/") {
+		branchName := strings.TrimPrefix(headStr, "ref: refs/heads/")
+		return branchName, nil
+	}
+	
+	// 直接コミットハッシュが書かれている場合（detached HEAD）
+	return "", fmt.Errorf("detached HEAD状態です")
 }

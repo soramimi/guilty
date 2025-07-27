@@ -69,7 +69,14 @@ const repositoryApp = Vue.createApp({
       deleteInProgress: false, // 削除処理中フラグ
       deleteError: null, // 削除エラーメッセージ
       hostName: document.querySelector('meta[name="git-host"]')?.content || 'localhost',
-      showDropdown: false // ハンバーガーメニューの表示状態
+      showDropdown: false, // ハンバーガーメニューの表示状態
+      branches: [], // ブランチ一覧
+      tags: [], // タグ一覧
+      currentHead: '', // 現在のHEADブランチ
+      showHeadModal: false, // HEADブランチ変更モーダル表示フラグ
+      selectedBranch: '', // 選択されたブランチ
+      headChangeInProgress: false, // HEADブランチ変更処理中フラグ
+      headChangeError: null // HEADブランチ変更エラーメッセージ
     };
   },
   computed: {
@@ -144,6 +151,19 @@ const repositoryApp = Vue.createApp({
             <dl class="row">
               <dt class="col-sm-2 text-left">名前</dt>
               <dd class="col-sm-10 text-left">{{ repository.name }}</dd>
+              
+              <dt class="col-sm-2 text-left">HEADブランチ</dt>
+              <dd class="col-sm-10 text-left">
+                <span v-if="currentHead" class="badge badge-primary mr-2">{{ currentHead }}</span>
+                <span v-else class="text-muted">設定されていません</span>
+                <button v-if="branches.length > 0" 
+                        class="btn btn-sm btn-outline-secondary ml-2" 
+                        @click="showChangeHeadModal"
+                        style="cursor: pointer;">
+                  変更
+                </button>
+                <small v-else class="text-muted ml-2">(ブランチがありません)</small>
+              </dd>
               
               <dt class="col-sm-2 text-left">最終コミット</dt>
               <dd v-if="repository.lastCommit" class="col-sm-10 text-left">
@@ -312,6 +332,37 @@ git push origin master</pre>
           </div>
         </div>
       </div>
+      
+      <!-- HEADブランチ変更モーダル (シンプル版) -->
+      <div v-show="showHeadModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center;">
+        <div style="background: white; padding: 20px; border-radius: 5px; max-width: 500px; width: 90%;">
+          <h3>HEADブランチの変更</h3>
+          <p>リポジトリ <strong>{{ repository ? repository.name : 'unknown' }}</strong> のHEADブランチを変更します。</p>
+          <p>現在のHEADブランチ: <span style="background: #007bff; color: white; padding: 2px 8px; border-radius: 3px;">{{ currentHead || '未設定' }}</span></p>
+          
+          <div style="margin: 15px 0;">
+            <label>新しいHEADブランチを選択:</label><br>
+            <select v-model="selectedBranch" style="width: 100%; padding: 5px; margin-top: 5px;">
+              <option value="">-- ブランチを選択してください --</option>
+              <option v-for="branch in branches" :key="branch" :value="branch">
+                {{ branch }}{{ branch === currentHead ? ' (現在)' : '' }}
+              </option>
+            </select>
+          </div>
+          
+          <div v-if="headChangeError" style="color: red; margin: 10px 0;">
+            {{ headChangeError }}
+          </div>
+          
+          <div style="text-align: right; margin-top: 20px;">
+            <button @click="closeChangeHeadModal" style="margin-right: 10px; padding: 8px 16px;">キャンセル</button>
+            <button @click="changeHeadBranch" :disabled="headChangeInProgress || !selectedBranch" style="background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 3px;">
+              <span v-if="headChangeInProgress">処理中...</span>
+              <span v-else>変更する</span>
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   `,
   created() {
@@ -347,9 +398,14 @@ git push origin master</pre>
           const details = response.data;
           this.repository = details.repository;
           this.files = details.files;
+          this.branches = details.branches || [];
+          this.tags = details.tags || [];
+          this.currentHead = details.currentHead || '';
+          
           this.loading = false;
         })
         .catch(error => {
+          console.error('リポジトリ詳細取得エラー:', error);
           this.error = `リポジトリ詳細の取得に失敗しました: ${error.message}`;
           this.loading = false;
         });
@@ -520,6 +576,9 @@ git push origin master</pre>
         if (this.showDeleteModal) {
           this.cancelDelete();
         }
+        if (this.showHeadModal) {
+          this.closeChangeHeadModal();
+        }
       }
     },
     handleOutsideClick(event) {
@@ -538,6 +597,15 @@ git push origin master</pre>
         if (modalContent && !modalContent.contains(event.target) && 
             !event.target.classList.contains('close')) {
           this.cancelDelete();
+        }
+      }
+      
+      // HEADブランチ変更モーダル処理
+      if (this.showHeadModal) {
+        const modalContent = document.querySelector('.head-modal .modal-content');
+        if (modalContent && !modalContent.contains(event.target) && 
+            !event.target.classList.contains('close')) {
+          this.closeChangeHeadModal();
         }
       }
     },
@@ -578,6 +646,52 @@ git push origin master</pre>
     confirmDeleteAndCloseDropdown() {
       this.showDropdown = false;
       this.confirmDelete();
+    },
+    showChangeHeadModal() {
+      this.selectedBranch = this.currentHead;
+      this.showHeadModal = true;
+      this.headChangeError = null;
+      document.body.classList.add('modal-open');
+    },
+    closeChangeHeadModal() {
+      this.showHeadModal = false;
+      this.selectedBranch = '';
+      this.headChangeError = null;
+      document.body.classList.remove('modal-open');
+    },
+    changeHeadBranch() {
+      if (!this.selectedBranch) {
+        this.headChangeError = 'ブランチを選択してください';
+        return;
+      }
+
+      if (this.selectedBranch === this.currentHead) {
+        this.headChangeError = '現在のHEADブランチと同じです';
+        return;
+      }
+
+      this.headChangeInProgress = true;
+      this.headChangeError = null;
+
+      const apiUrl = `/api/head/${encodeURIComponent(this.groupName)}/${encodeURIComponent(this.repoName)}`;
+
+      axios.post(apiUrl, {
+        branch: this.selectedBranch
+      })
+      .then(response => {
+        // 成功時の処理
+        this.currentHead = this.selectedBranch;
+        this.closeChangeHeadModal();
+        document.body.classList.remove('modal-open'); // 確実にmodal-openを削除
+        // リポジトリ詳細を再取得してファイル一覧を更新
+        this.fetchRepositoryDetails();
+      })
+      .catch(error => {
+        this.headChangeError = error.response?.data?.error || 'HEADブランチの変更に失敗しました';
+      })
+      .finally(() => {
+        this.headChangeInProgress = false;
+      });
     }
   },
   mounted() {

@@ -74,7 +74,7 @@ const createRepoApp = Vue.createApp({
                   {{ validationError }}
                 </div>
                 <small class="form-text text-muted">
-                  リポジトリ名は英数字、ハイフン、アンダースコアのみ使用できます。
+                  リポジトリ名は日本語や英数字、各種記号を使用できます。ただし、ファイルシステムで禁止されている文字（/ \ : * ? " < > |）は使用できません。
                 </small>
               </div>
               <button type="submit" class="btn btn-primary" :disabled="!isNameValid || isSubmitting">
@@ -121,10 +121,17 @@ const createRepoApp = Vue.createApp({
         return;
       }
       
-      // 不正な文字をチェック
-      const nameRegex = /^[a-zA-Z0-9_-]+$/;
-      if (!nameRegex.test(this.repositoryName)) {
-        this.validationError = 'リポジトリ名には英数字、ハイフン、アンダースコアのみ使用できます';
+      // 不正な文字をチェック（ファイルシステムで禁止されている文字のみ禁止）
+      const invalidChars = /[\/\\:*?"<>|]/;
+      if (invalidChars.test(this.repositoryName)) {
+        this.validationError = 'リポジトリ名にはファイルシステムで禁止されている文字（/ \\ : * ? " < > |）は使用できません';
+        return;
+      }
+      
+      // 先頭と末尾の空白文字やドットをチェック
+      if (this.repositoryName.startsWith(' ') || this.repositoryName.endsWith(' ') ||
+          this.repositoryName.startsWith('.') || this.repositoryName.endsWith('.')) {
+        this.validationError = 'リポジトリ名の先頭や末尾にスペースやドットは使用できません';
         return;
       }
       

@@ -1223,10 +1223,17 @@ func validateRepositoryName(name string, group string) error {
 		return fmt.Errorf("リポジトリ名が指定されていません")
 	}
 
-	// 不正な文字のチェック（英数字、ハイフン、アンダースコアのみ許可）
-	validName := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
-	if !validName.MatchString(name) {
-		return fmt.Errorf("リポジトリ名には英数字、ハイフン、アンダースコアのみ使用できます")
+	// 不正な文字のチェック（ユニコード文字、英数字、ハイフン、アンダースコアを許可）
+	// ただし、ファイルシステムで使用できない文字は除外
+	invalidChars := regexp.MustCompile(`[/\\:*?"<>|]`)
+	if invalidChars.MatchString(name) {
+		return fmt.Errorf("リポジトリ名にはファイルシステムで禁止されている文字（/ \\ : * ? \" < > |）は使用できません")
+	}
+	
+	// 先頭と末尾の空白文字やドットをチェック
+	if strings.HasPrefix(name, " ") || strings.HasSuffix(name, " ") ||
+		strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") {
+		return fmt.Errorf("リポジトリ名の先頭や末尾にスペースやドットは使用できません")
 	}
 	
 	// グループ名が指定されていない場合はデフォルトの "git" を使用
@@ -1265,7 +1272,7 @@ func createRepository(name string, group string) error {
 	}
 
 	// git init --bare コマンドを実行
-	cmd := exec.Command("git", "init", "--bare", repoPath)
+	cmd := exec.Command("git", "init", "--bare", repoPath, "-b", "main")
 	err = cmd.Run()
 	if err != nil {
 		// 失敗した場合はディレクトリを削除してクリーンアップ

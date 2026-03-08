@@ -17,13 +17,15 @@ Guilty is a web-based Git repository manager that provides simple repository man
 - **File Browsing**: Navigate through repository files and directories
 - **File Viewing**: View file contents with text/binary detection
 - **Clone URL Support**: Easily copy Git clone URLs for repositories
+- **Git LFS Support**: Git Large File Storage (LFS) Batch API backed by MinIO (S3-compatible object storage)
 
 ## System Requirements
 
-- Go 1.16 or later
+- Go 1.24 or later
 - Git command-line tools
 - systemd (for service installation)
 - A local `git` user account (see Prerequisites section below)
+- MinIO or other S3-compatible object storage (for Git LFS support)
 
 ## Prerequisites
 
@@ -75,13 +77,42 @@ sudo systemctl start guilty
 
 ## Configuration
 
-By default, Guilty looks for Git repositories in `/mnt/git`. If you need to change this location, modify the `GitRepositoryRoot` constant in the source code before building.
+By default, Guilty looks for Git repositories under `/home/git`. If you need to change this location, modify the `GitRepositoryHome` constant in the source code before building.
 
-The hostname used for Git clone URLs defaults to `localhost` but can be customized using a meta tag in the HTML templates.
+The hostname used for Git clone URLs defaults to `git` but can be customized by modifying the `GitHostName` variable in the source code.
+
+### Git LFS Configuration
+
+Guilty implements the [Git LFS Batch API](https://github.com/git-lfs/git-lfs/blob/main/docs/api/batch.md) at the following endpoint:
+
+```
+POST /lfs/{group}/{reponame}/info/lfs/objects/batch
+```
+
+LFS objects are stored in a MinIO (S3-compatible) bucket. The following variables can be adjusted in the source code:
+
+| Variable | Default | Description |
+|---|---|---|
+| `LFSStorageEndpoint` | `http://minio.example.com:9000` | MinIO server URL |
+| `LFSBucketName` | `gitlfs` | Bucket name for LFS objects |
+| `LFSAccessKeyID` | `minioadmin` | MinIO access key |
+| `LFSSecretAccessKey` | `minioadmin` | MinIO secret key |
+| `LFSURLExpiry` | `600` | Presigned URL expiry in seconds |
+
+Objects are stored under the key path:
+```
+{group}/{reponame}/{oid[0:2]}/{oid[2:4]}/{oid}
+```
+
+To configure Git LFS for a repository to use Guilty as the LFS server, set the LFS URL in the repository:
+
+```bash
+git config lfs.url http://your-server:1080/lfs/group/reponame
+```
 
 ## Usage
 
-Once running, access the web interface at: http://localhost:8000
+Once running, access the web interface at: http://localhost:1080
 
 From there you can:
 - Browse existing repositories organized by groups
@@ -93,7 +124,7 @@ From there you can:
 ## Repository Groups
 
 Guilty organizes repositories into groups:
-- Groups are represented by subdirectories in the `/mnt/git` directory
+- Groups are represented by subdirectories in the `GitRepositoryHome` directory (default: `/home/git`)
 - The default group is `git`
 - Groups with special characters (except `-` and `_`) are excluded
 - The group `git-shell-commands` is specifically excluded

@@ -113,6 +113,10 @@ const repositoryApp = Vue.createApp({
     fullRepoPath() {
       // グループ名とリポジトリ名を含む完全パス
       return `${this.groupName}/${this.repoName}`;
+    },
+    lfsConfigCommand() {
+      const lfsUrl = `http://${window.location.host}/lfs/${this.groupName}/${this.repoName}`;
+      return `git config --add lfs.url "${lfsUrl}"`;
     }
   },
   template: `
@@ -182,6 +186,18 @@ const repositoryApp = Vue.createApp({
                   </div>
                 </div>
                 <small class="text-muted mt-1 d-block">{{ repository.cloneUrl ? '' : 'クローンURLが取得できませんでした' }}</small>
+              </dd>
+
+              <dt class="col-sm-2 text-left">LFS URL</dt>
+              <dd class="col-sm-10">
+                <div class="input-group">
+                  <input type="text" class="form-control" readonly :value="lfsConfigCommand" id="lfsConfigInput">
+                  <div class="input-group-append">
+                    <button class="btn btn-outline-secondary" type="button" @click="copyLfsConfig" title="コマンドをコピー">
+                      <span>コピー</span>
+                    </button>
+                  </div>
+                </div>
               </dd>
             </dl>
           </div>
@@ -413,16 +429,30 @@ git push origin master</pre>
     copyCloneUrl() {
       const cloneUrlInput = document.getElementById('cloneUrlInput');
       if (cloneUrlInput) {
-        cloneUrlInput.select();
-        document.execCommand('copy');
-        // コピー成功を通知するためにボタンテキストを一時的に変更
+        navigator.clipboard.writeText(cloneUrlInput.value).catch(() => {
+          cloneUrlInput.select();
+          document.execCommand('copy');
+        });
         const button = document.querySelector('#cloneUrlInput + .input-group-append button');
         if (button) {
           const originalText = button.textContent;
           button.textContent = 'コピーしました！';
-          setTimeout(() => {
-            button.textContent = originalText;
-          }, 1500);
+          setTimeout(() => { button.textContent = originalText; }, 1500);
+        }
+      }
+    },
+    copyLfsConfig() {
+      const input = document.getElementById('lfsConfigInput');
+      if (input) {
+        navigator.clipboard.writeText(input.value).catch(() => {
+          input.select();
+          document.execCommand('copy');
+        });
+        const button = document.querySelector('#lfsConfigInput + .input-group-append button');
+        if (button) {
+          const originalText = button.textContent;
+          button.textContent = 'コピーしました！';
+          setTimeout(() => { button.textContent = originalText; }, 1500);
         }
       }
     },

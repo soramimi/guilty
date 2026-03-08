@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -15,12 +16,17 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 const ServerPort = 1080
 
 // GitRepositoryHome はGitリポジトリのホームディレクトリを定義します
-const GitRepositoryHome= "/home/git"
+const GitRepositoryHome = "/home/git"
 
 // GitHostName はGitリポジトリのホスト名を定義します（git clone用）
 var GitHostName = "git"
@@ -31,6 +37,49 @@ const GitCloneURLTemplate = "git@%s:%s/%s.git"
 // 除外すべきグループ名のパターンを定義
 var GroupNameBlacklist = []*regexp.Regexp{
 	regexp.MustCompile(`^git-shell-commands$`), // git-shell-commands を除外
+}
+
+// LFS ストレージ設定
+const LFSStorageEndpoint = "http://mary.lan:9000"
+const LFSBucketName = "gitlfs"
+const LFSURLExpiry = 600 // seconds
+
+var LFSAccessKeyID = "minioadmin"
+var LFSSecretAccessKey = "minioadmin"
+
+// LFS Batch API 用の構造体
+type LFSBatchRequest struct {
+	Operation string      `json:"operation"`
+	Transfers []string    `json:"transfers"`
+	Objects   []LFSObject `json:"objects"`
+}
+
+type LFSObject struct {
+	OID  string `json:"oid"`
+	Size int64  `json:"size"`
+}
+
+type LFSBatchResponse struct {
+	Transfer string              `json:"transfer"`
+	Objects  []LFSObjectResponse `json:"objects"`
+}
+
+type LFSObjectResponse struct {
+	OID     string               `json:"oid"`
+	Size    int64                `json:"size"`
+	Actions map[string]LFSAction `json:"actions,omitempty"`
+	Error   *LFSObjectError      `json:"error,omitempty"`
+}
+
+type LFSAction struct {
+	HRef      string            `json:"href"`
+	Header    map[string]string `json:"header,omitempty"`
+	ExpiresIn int               `json:"expires_in"`
+}
+
+type LFSObjectError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
 }
 
 type PageData struct {
@@ -66,11 +115,11 @@ type GitFile struct {
 
 // RepositoryDetails はリポジトリの詳細情報を含む
 type RepositoryDetails struct {
-	Repository   GitRepository `json:"repository"`
-	Files        []GitFile     `json:"files"`
-	Branches     []string      `json:"branches"`
-	Tags         []string      `json:"tags"`
-	CurrentHead  string        `json:"currentHead"`  // 現在のHEADブランチ
+	Repository  GitRepository `json:"repository"`
+	Files       []GitFile     `json:"files"`
+	Branches    []string      `json:"branches"`
+	Tags        []string      `json:"tags"`
+	CurrentHead string        `json:"currentHead"` // 現在のHEADブランチ
 }
 
 // リポジトリ作成リクエスト用の構造体
@@ -104,6 +153,9 @@ func main() {
 
 	// HEADブランチ変更API
 	http.HandleFunc("/api/head/", changeHeadBranchHandler)
+
+	// Git LFS Batch API
+	http.HandleFunc("/lfs/", lfsHandler)
 
 	// リポジトリ詳細ページのルーティング
 	http.HandleFunc("/repository/", repositoryPageHandler)
@@ -249,7 +301,7 @@ func repositoriesHandler(w http.ResponseWriter, r *http.Request) {
 
 	// GETリクエストの場合はリポジトリ一覧を返す
 	if r.Method == http.MethodGet {
-		 // URLクエリパラメータからグループ名を取得
+		// URLクエリパラメータからグループ名を取得
 		groupName := r.URL.Query().Get("group")
 		if groupName == "" {
 			// グループ名が指定されていない場合はデフォルトの "git" を使用
@@ -344,14 +396,14 @@ func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]string{"error": "不正なリクエスト形式"})
 			return
 		}
-		
+
 		// 操作タイプが "delete" の場合のみ削除を実行
 		if requestBody["operation"] != "delete" {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "不正な操作タイプ"})
 			return
 		}
-		
+
 		// パスから取得したグループ名とリポジトリ名を使用して削除処理を行う
 		fullPath := filepath.Join(groupName, repoName)
 		err := deleteRepository(fullPath)
@@ -536,10 +588,10 @@ func getGitRepositories(groupName string) ([]GitRepository, error) {
 			}
 
 			repo := GitRepository{
-				Path: path,
+				Path:  path,
 				Group: groupName, // 選択されたグループ名を使用
-				Name: repoName,
-				Type: "bare",
+				Name:  repoName,
+				Type:  "bare",
 				// クローンURLを生成
 				CloneURL: fmt.Sprintf(GitCloneURLTemplate, GitHostName, groupName, repoName),
 			}
@@ -614,7 +666,7 @@ func getGroupList() ([]string, error) {
 		if !isValidGroupName(groupName) {
 			continue
 		}
-		
+
 		if groupName == "git" {
 			hasGitGroup = true
 		}
@@ -951,7 +1003,7 @@ func directoryContentsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// URLからパラメータを取得
 	encodedPath := strings.TrimPrefix(r.URL.Path, "/api/directory/")
-	
+
 	// 最初の2つのスラッシュの位置を特定
 	firstSlashPos := strings.Index(encodedPath, "/")
 	if firstSlashPos < 0 {
@@ -959,14 +1011,14 @@ func directoryContentsHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"error": "無効なパス形式です（グループ名がありません）"})
 		return
 	}
-	
+
 	// リポジトリ名のスラッシュ位置を特定
 	secondSlashPos := strings.Index(encodedPath[firstSlashPos+1:], "/")
-	
+
 	// グループ名とリポジトリ名を取得
 	encodedGroupName := encodedPath[:firstSlashPos]
 	var encodedRepoName, encodedDirPath string
-	
+
 	if secondSlashPos < 0 {
 		// ディレクトリパスが指定されていない場合
 		encodedRepoName = encodedPath[firstSlashPos+1:]
@@ -974,10 +1026,10 @@ func directoryContentsHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// ディレクトリパスが指定されている場合
 		secondSlashPos += firstSlashPos + 1 // path全体の中での位置に調整
-		encodedRepoName = encodedPath[firstSlashPos+1:secondSlashPos]
+		encodedRepoName = encodedPath[firstSlashPos+1 : secondSlashPos]
 		encodedDirPath = encodedPath[secondSlashPos+1:]
 	}
-	
+
 	// デコード
 	groupName, err := url.PathUnescape(encodedGroupName)
 	if err != nil {
@@ -985,14 +1037,14 @@ func directoryContentsHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"error": "無効なグループ名"})
 		return
 	}
-	
+
 	repoName, err := url.PathUnescape(encodedRepoName)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "無効なリポジトリ名"})
 		return
 	}
-	
+
 	// ディレクトリパス部分のデコード - %2Fもデコードされるように
 	var dirPath string
 	if encodedDirPath != "" {
@@ -1063,7 +1115,7 @@ func fileContentsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// URLからパラメータを取得
 	encodedPath := strings.TrimPrefix(r.URL.Path, "/api/file/")
-	
+
 	// 最初の2つのスラッシュの位置を特定
 	firstSlashPos := strings.Index(encodedPath, "/")
 	if firstSlashPos < 0 {
@@ -1071,7 +1123,7 @@ func fileContentsHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"error": "無効なパス形式です（グループ名がありません）"})
 		return
 	}
-	
+
 	secondSlashPos := strings.Index(encodedPath[firstSlashPos+1:], "/")
 	if secondSlashPos < 0 {
 		w.WriteHeader(http.StatusBadRequest)
@@ -1079,12 +1131,12 @@ func fileContentsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	secondSlashPos += firstSlashPos + 1 // path全体の中での位置に調整
-	
+
 	// グループ名とリポジトリ名部分を取得
 	encodedGroupName := encodedPath[:firstSlashPos]
-	encodedRepoName := encodedPath[firstSlashPos+1:secondSlashPos]
+	encodedRepoName := encodedPath[firstSlashPos+1 : secondSlashPos]
 	encodedFilePath := encodedPath[secondSlashPos+1:]
-	
+
 	// デコード
 	groupName, err := url.PathUnescape(encodedGroupName)
 	if err != nil {
@@ -1092,14 +1144,14 @@ func fileContentsHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"error": "無効なグループ名"})
 		return
 	}
-	
+
 	repoName, err := url.PathUnescape(encodedRepoName)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "無効なリポジトリ名"})
 		return
 	}
-	
+
 	// ファイルパス部分のデコード - %2Fもデコードされるように
 	filePath, err := url.PathUnescape(encodedFilePath)
 	if err != nil {
@@ -1107,7 +1159,7 @@ func fileContentsHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"error": "無効なファイルパス"})
 		return
 	}
-	
+
 	// リポジトリの完全パスを構築
 	fullRepoPath := filepath.Join(filepath.Join(GitRepositoryHome, groupName), repoName+".git")
 
@@ -1240,18 +1292,18 @@ func validateRepositoryName(name string, group string) error {
 	if invalidChars.MatchString(name) {
 		return fmt.Errorf("リポジトリ名にはファイルシステムで禁止されている文字（/ \\ : * ? \" < > |）は使用できません")
 	}
-	
+
 	// 先頭と末尾の空白文字やドットをチェック
 	if strings.HasPrefix(name, " ") || strings.HasSuffix(name, " ") ||
 		strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") {
 		return fmt.Errorf("リポジトリ名の先頭や末尾にスペースやドットは使用できません")
 	}
-	
+
 	// グループ名が指定されていない場合はデフォルトの "git" を使用
 	if group == "" {
 		group = "git"
 	}
-	
+
 	// 既存のリポジトリと名前が重複していないかチェック
 	repoPath := filepath.Join(filepath.Join(GitRepositoryHome, group), name+".git")
 	if _, err := os.Stat(repoPath); err == nil {
@@ -1296,48 +1348,48 @@ func createRepository(name string, group string) error {
 
 // deleteRepository はリポジトリを削除する（実際には名前を変更して権限を変更する）
 func deleteRepository(name string) error {
-    groupName, baseName := splitRepositoryName(name);
+	groupName, baseName := splitRepositoryName(name)
 
-    // リポジトリのパスを構築
-    repoPath := filepath.Join(filepath.Join(GitRepositoryHome, groupName), baseName+".git")
+	// リポジトリのパスを構築
+	repoPath := filepath.Join(filepath.Join(GitRepositoryHome, groupName), baseName+".git")
 
-    // リポジトリの存在確認
-    if _, err := os.Stat(repoPath); os.IsNotExist(err) {
-        return fmt.Errorf("リポジトリ '%s' は存在しません", baseName)
-    }
+	// リポジトリの存在確認
+	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
+		return fmt.Errorf("リポジトリ '%s' は存在しません", baseName)
+	}
 
-    // 移動先のパス（.deletedを追加）
-    newPath := repoPath + ".deleted"
+	// 移動先のパス（.deletedを追加）
+	newPath := repoPath + ".deleted"
 
-    // 既に削除済みのリポジトリがある場合は、それを先に完全に削除
-    if _, statErr := os.Stat(newPath); statErr == nil {
-        // 削除する前にアクセス権を変更（chmod 755）して読み書き可能にする
-        chmodErr := os.Chmod(newPath, 0755)
-        if chmodErr != nil {
-            log.Printf("警告: 既存の削除済みリポジトリの権限変更に失敗しました: %v", chmodErr)
-            // 権限変更に失敗してもディレクトリ削除を試みる
-        }
-        
-        removeErr := os.RemoveAll(newPath)
-        if removeErr != nil {
-            return fmt.Errorf("既存の削除済みリポジトリの削除に失敗しました: %w", removeErr)
-        }
-    }
+	// 既に削除済みのリポジトリがある場合は、それを先に完全に削除
+	if _, statErr := os.Stat(newPath); statErr == nil {
+		// 削除する前にアクセス権を変更（chmod 755）して読み書き可能にする
+		chmodErr := os.Chmod(newPath, 0755)
+		if chmodErr != nil {
+			log.Printf("警告: 既存の削除済みリポジトリの権限変更に失敗しました: %v", chmodErr)
+			// 権限変更に失敗してもディレクトリ削除を試みる
+		}
 
-    // リポジトリの名前を変更
-    renameErr := os.Rename(repoPath, newPath)
-    if renameErr != nil {
-        return fmt.Errorf("リポジトリの名前変更に失敗しました: %w", renameErr)
-    }
+		removeErr := os.RemoveAll(newPath)
+		if removeErr != nil {
+			return fmt.Errorf("既存の削除済みリポジトリの削除に失敗しました: %w", removeErr)
+		}
+	}
 
-    // 権限を変更（読み書き禁止: chmod 000）
-    chmodErr := os.Chmod(newPath, 0000)
-    if chmodErr != nil {
-        // 権限変更に失敗した場合でも、名前の変更は成功しているので警告だけ出して続行
-        log.Printf("警告: リポジトリのアクセス権限変更に失敗しました: %v", chmodErr)
-    }
+	// リポジトリの名前を変更
+	renameErr := os.Rename(repoPath, newPath)
+	if renameErr != nil {
+		return fmt.Errorf("リポジトリの名前変更に失敗しました: %w", renameErr)
+	}
 
-    return nil
+	// 権限を変更（読み書き禁止: chmod 000）
+	chmodErr := os.Chmod(newPath, 0000)
+	if chmodErr != nil {
+		// 権限変更に失敗した場合でも、名前の変更は成功しているので警告だけ出して続行
+		log.Printf("警告: リポジトリのアクセス権限変更に失敗しました: %v", chmodErr)
+	}
+
+	return nil
 }
 
 // changeHeadBranchHandler はリポジトリのHEADブランチを変更するAPIハンドラー
@@ -1402,7 +1454,7 @@ func changeHeadBranchHandler(w http.ResponseWriter, r *http.Request) {
 // changeRepositoryHead はリポジトリのHEADブランチを変更する
 func changeRepositoryHead(groupName, repoName, branchName string) error {
 	repoPath := filepath.Join(GitRepositoryHome, groupName, repoName+".git")
-	
+
 	// リポジトリの存在確認
 	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
 		return fmt.Errorf("リポジトリが見つかりません: %s", repoPath)
@@ -1417,7 +1469,7 @@ func changeRepositoryHead(groupName, repoName, branchName string) error {
 	// HEADファイルを更新
 	headFilePath := filepath.Join(repoPath, "HEAD")
 	headContent := fmt.Sprintf("ref: refs/heads/%s\n", branchName)
-	
+
 	err := os.WriteFile(headFilePath, []byte(headContent), 0644)
 	if err != nil {
 		return fmt.Errorf("HEADファイルの更新に失敗しました: %w", err)
@@ -1426,10 +1478,167 @@ func changeRepositoryHead(groupName, repoName, branchName string) error {
 	return nil
 }
 
+// lfsHandler は Git LFS Batch API を処理するハンドラー
+func lfsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/vnd.git-lfs+json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// パスを解析: /lfs/{group}/{reponame}/info/lfs/objects/batch
+	path := strings.TrimPrefix(r.URL.Path, "/lfs/")
+	parts := strings.SplitN(path, "/", 3)
+	if len(parts) < 3 {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"message": "エンドポイントが見つかりません"})
+		return
+	}
+
+	group, err := url.PathUnescape(parts[0])
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"message": "無効なグループ名"})
+		return
+	}
+
+	repoName, err := url.PathUnescape(parts[1])
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"message": "無効なリポジトリ名"})
+		return
+	}
+
+	if parts[2] != "info/lfs/objects/batch" {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"message": "エンドポイントが見つかりません"})
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"message": "POSTメソッドのみサポートしています"})
+		return
+	}
+
+	var batchReq LFSBatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&batchReq); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"message": "無効なリクエスト形式"})
+		return
+	}
+
+	if batchReq.Operation != "download" && batchReq.Operation != "upload" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"message": "operation は upload または download でなければなりません"})
+		return
+	}
+
+	objects, err := generateLFSPresignedURLs(r.Context(), batchReq.Operation, group, repoName, batchReq.Objects)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Presigned URL の生成に失敗しました: " + err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(LFSBatchResponse{
+		Transfer: "basic",
+		Objects:  objects,
+	})
+}
+
+// generateLFSPresignedURLs は各 LFS オブジェクトに対して MinIO の Presigned URL を生成する
+func generateLFSPresignedURLs(ctx context.Context, operation, group, repoName string, objects []LFSObject) ([]LFSObjectResponse, error) {
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithRegion("us-east-1"),
+		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+			LFSAccessKeyID, LFSSecretAccessKey, "",
+		)),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	s3Client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+		o.BaseEndpoint = aws.String(LFSStorageEndpoint)
+		o.UsePathStyle = true
+	})
+	presignClient := s3.NewPresignClient(s3Client)
+
+	var result []LFSObjectResponse
+
+	for _, obj := range objects {
+		oid := obj.OID
+		if len(oid) < 4 {
+			result = append(result, LFSObjectResponse{
+				OID:  oid,
+				Size: obj.Size,
+				Error: &LFSObjectError{
+					Code:    422,
+					Message: "無効な OID",
+				},
+			})
+			continue
+		}
+
+		// S3 キー: gitlfs/{group}/{reponame}/{oid[0:2]}/{oid[2:4]}/{oid}
+		key := fmt.Sprintf("%s/%s/%s/%s/%s", group, repoName, oid[0:2], oid[2:4], oid)
+
+		var href string
+		if operation == "download" {
+			presignResult, err := presignClient.PresignGetObject(ctx, &s3.GetObjectInput{
+				Bucket: aws.String(LFSBucketName),
+				Key:    aws.String(key),
+			}, s3.WithPresignExpires(LFSURLExpiry*time.Second))
+			if err != nil {
+				result = append(result, LFSObjectResponse{
+					OID:   oid,
+					Size:  obj.Size,
+					Error: &LFSObjectError{Code: 500, Message: "ダウンロード URL の生成に失敗しました"},
+				})
+				continue
+			}
+			href = presignResult.URL
+		} else {
+			presignResult, err := presignClient.PresignPutObject(ctx, &s3.PutObjectInput{
+				Bucket: aws.String(LFSBucketName),
+				Key:    aws.String(key),
+			}, s3.WithPresignExpires(LFSURLExpiry*time.Second))
+			if err != nil {
+				result = append(result, LFSObjectResponse{
+					OID:   oid,
+					Size:  obj.Size,
+					Error: &LFSObjectError{Code: 500, Message: "アップロード URL の生成に失敗しました"},
+				})
+				continue
+			}
+			href = presignResult.URL
+		}
+
+		result = append(result, LFSObjectResponse{
+			OID:  oid,
+			Size: obj.Size,
+			Actions: map[string]LFSAction{
+				operation: {
+					HRef:      href,
+					ExpiresIn: LFSURLExpiry,
+				},
+			},
+		})
+	}
+
+	return result, nil
+}
+
 // getCurrentHeadBranch はリポジトリの現在のHEADブランチを取得する
 func getCurrentHeadBranch(repoPath string) (string, error) {
 	headFilePath := filepath.Join(repoPath, "HEAD")
-	
+
 	// HEADファイルを読み込み
 	headContent, err := os.ReadFile(headFilePath)
 	if err != nil {
@@ -1437,13 +1646,13 @@ func getCurrentHeadBranch(repoPath string) (string, error) {
 	}
 
 	headStr := strings.TrimSpace(string(headContent))
-	
+
 	// "ref: refs/heads/ブランチ名" の形式かチェック
 	if strings.HasPrefix(headStr, "ref: refs/heads/") {
 		branchName := strings.TrimPrefix(headStr, "ref: refs/heads/")
 		return branchName, nil
 	}
-	
+
 	// 直接コミットハッシュが書かれている場合（detached HEAD）
 	return "", fmt.Errorf("detached HEAD状態です")
 }

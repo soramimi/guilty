@@ -76,7 +76,9 @@ const repositoryApp = Vue.createApp({
       showHeadModal: false, // HEADブランチ変更モーダル表示フラグ
       selectedBranch: '', // 選択されたブランチ
       headChangeInProgress: false, // HEADブランチ変更処理中フラグ
-      headChangeError: null // HEADブランチ変更エラーメッセージ
+      headChangeError: null, // HEADブランチ変更エラーメッセージ
+      cloneUrlCopied: false, // クローンURL コピー済みフラグ
+      lfsConfigCopied: false // LFS URL コピー済みフラグ
     };
   },
   computed: {
@@ -115,8 +117,8 @@ const repositoryApp = Vue.createApp({
       return `${this.groupName}/${this.repoName}`;
     },
     lfsConfigCommand() {
-      const lfsUrl = `http://${window.location.host}/lfs/${this.groupName}/${this.repoName}`;
-      return `git config --add lfs.url "${lfsUrl}"`;
+      const lfsUrl = `http://${window.location.host}/lfs/${this.groupName}/${this.repoName}/info/lfs`;
+      return `git config lfs.url "${lfsUrl}"`;
     }
   },
   template: `
@@ -181,20 +183,20 @@ const repositoryApp = Vue.createApp({
                   <input type="text" class="form-control" readonly :value="repository.cloneUrl || ''" id="cloneUrlInput">
                   <div class="input-group-append">
                     <button class="btn btn-outline-secondary" type="button" @click="copyCloneUrl" title="URLをコピー">
-                      <span>コピー</span>
+                      <span>{{ cloneUrlCopied ? 'コピーしました！' : 'コピー' }}</span>
                     </button>
                   </div>
                 </div>
                 <small class="text-muted mt-1 d-block">{{ repository.cloneUrl ? '' : 'クローンURLが取得できませんでした' }}</small>
               </dd>
 
-              <dt class="col-sm-2 text-left">LFS URL</dt>
+              <dt class="col-sm-2 text-left">LFSサポート</dt>
               <dd class="col-sm-10">
                 <div class="input-group">
                   <input type="text" class="form-control" readonly :value="lfsConfigCommand" id="lfsConfigInput">
                   <div class="input-group-append">
                     <button class="btn btn-outline-secondary" type="button" @click="copyLfsConfig" title="コマンドをコピー">
-                      <span>コピー</span>
+                      <span>{{ lfsConfigCopied ? 'コピーしました！' : 'コピー' }}</span>
                     </button>
                   </div>
                 </div>
@@ -427,34 +429,20 @@ git push origin master</pre>
         });
     },
     copyCloneUrl() {
-      const cloneUrlInput = document.getElementById('cloneUrlInput');
-      if (cloneUrlInput) {
-        navigator.clipboard.writeText(cloneUrlInput.value).catch(() => {
-          cloneUrlInput.select();
-          document.execCommand('copy');
-        });
-        const button = document.querySelector('#cloneUrlInput + .input-group-append button');
-        if (button) {
-          const originalText = button.textContent;
-          button.textContent = 'コピーしました！';
-          setTimeout(() => { button.textContent = originalText; }, 1500);
-        }
-      }
+      const el = document.getElementById('cloneUrlInput');
+      if (!el) return;
+      el.select();
+      document.execCommand('copy');
+      this.cloneUrlCopied = true;
+      setTimeout(() => { this.cloneUrlCopied = false; }, 1500);
     },
     copyLfsConfig() {
-      const input = document.getElementById('lfsConfigInput');
-      if (input) {
-        navigator.clipboard.writeText(input.value).catch(() => {
-          input.select();
-          document.execCommand('copy');
-        });
-        const button = document.querySelector('#lfsConfigInput + .input-group-append button');
-        if (button) {
-          const originalText = button.textContent;
-          button.textContent = 'コピーしました！';
-          setTimeout(() => { button.textContent = originalText; }, 1500);
-        }
-      }
+      const el = document.getElementById('lfsConfigInput');
+      if (!el) return;
+      el.select();
+      document.execCommand('copy');
+      this.lfsConfigCopied = true;
+      setTimeout(() => { this.lfsConfigCopied = false; }, 1500);
     },
     openDirectory(directory) {
       this.loading = true;

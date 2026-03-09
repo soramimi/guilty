@@ -36,7 +36,7 @@ var GitHostName = "git"
 const GitCloneURLTemplate = "git@%s:%s/%s.git"
 
 // LFSConfigTemplate はLFS設定コマンドのテンプレートを定義します
-const LFSConfigTemplate = `git config lfs.url "http://%s/lfs/%s/%s"`
+const LFSConfigTemplate = `git config lfs.url "http://%s/lfs/%s/%s/info/lfs"`
 
 // 除外すべきグループ名のパターンを定義
 var GroupNameBlacklist = []*regexp.Regexp{
@@ -144,13 +144,13 @@ type PageData struct {
 }
 
 type GitRepository struct {
-	Path          string      `json:"path"`
-	Group         string      `json:"group"`
-	Name          string      `json:"name"`
-	Type          string      `json:"type"`
-	CloneURL      string      `json:"cloneUrl"`      // クローン用URLを追加
-	LFSConfigCmd  string      `json:"lfsConfigCmd"`  // LFS設定コマンドを追加
-	LastCommit    *CommitInfo `json:"lastCommit"`
+	Path         string      `json:"path"`
+	Group        string      `json:"group"`
+	Name         string      `json:"name"`
+	Type         string      `json:"type"`
+	CloneURL     string      `json:"cloneUrl"`     // クローン用URLを追加
+	LFSConfigCmd string      `json:"lfsConfigCmd"` // LFS設定コマンドを追加
+	LastCommit   *CommitInfo `json:"lastCommit"`
 }
 
 type CommitInfo struct {

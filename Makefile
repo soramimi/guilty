@@ -17,6 +17,7 @@ install: build
 	install -m 755 guilty /home/git/.guilty/
 	cp -a static /home/git/.guilty/
 	cp -a templates /home/git/.guilty/
+	cp guilty.conf.example /home/git/.guilty/
 	chown -R git:git /home/git/.guilty
 	#install guilty.service /etc/systemd/system/
 

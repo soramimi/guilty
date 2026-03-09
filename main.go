@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -23,10 +24,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-const ServerPort = 1080
+var ServerPort = 1080
 
 // GitRepositoryHome はGitリポジトリのホームディレクトリを定義します
-const GitRepositoryHome = "/home/git"
+var GitRepositoryHome = "/home/git"
 
 // GitHostName はGitリポジトリのホスト名を定義します（git clone用）
 var GitHostName = "git"
@@ -40,12 +41,62 @@ var GroupNameBlacklist = []*regexp.Regexp{
 }
 
 // LFS ストレージ設定
-const LFSStorageEndpoint = "http://mary.lan:9000"
-const LFSBucketName = "gitlfs"
-const LFSURLExpiry = 600 // seconds
+var LFSStorageEndpoint = "http://mary.lan:9000"
+var LFSBucketName = "gitlfs"
+var LFSURLExpiry = 600 // seconds
 
 var LFSAccessKeyID = "minioadmin"
 var LFSSecretAccessKey = "minioadmin"
+
+// loadConfig は guilty.conf を読み込んで設定値を更新します
+func loadConfig(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	var section string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			section = line[1 : len(line)-1]
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		switch section + "." + key {
+		case "server.listen_port":
+			if v, err := strconv.Atoi(value); err == nil {
+				ServerPort = v
+			}
+		case "server.host_name":
+			GitHostName = value
+		case "git.repository_home":
+			GitRepositoryHome = value
+		case "lfs.storage_endpoint":
+			LFSStorageEndpoint = value
+		case "lfs.storage_access_key":
+			LFSAccessKeyID = value
+		case "lfs.storage_secret_key":
+			LFSSecretAccessKey = value
+		case "lfs.bucket_name":
+			LFSBucketName = value
+		case "lfs.url_expiry":
+			if v, err := strconv.Atoi(value); err == nil {
+				LFSURLExpiry = v
+			}
+		}
+	}
+}
 
 // LFS Batch API 用の構造体
 type LFSBatchRequest struct {
@@ -129,6 +180,8 @@ type CreateRepositoryRequest struct {
 }
 
 func main() {
+	loadConfig("guilty.conf")
+
 	// 静的ファイルのルーティング
 	fs := http.FileServer(http.Dir("static"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
@@ -1594,7 +1647,7 @@ func generateLFSPresignedURLs(ctx context.Context, operation, group, repoName st
 			presignResult, err := presignClient.PresignGetObject(ctx, &s3.GetObjectInput{
 				Bucket: aws.String(LFSBucketName),
 				Key:    aws.String(key),
-			}, s3.WithPresignExpires(LFSURLExpiry*time.Second))
+			}, s3.WithPresignExpires(time.Duration(LFSURLExpiry)*time.Second))
 			if err != nil {
 				result = append(result, LFSObjectResponse{
 					OID:   oid,
@@ -1608,7 +1661,7 @@ func generateLFSPresignedURLs(ctx context.Context, operation, group, repoName st
 			presignResult, err := presignClient.PresignPutObject(ctx, &s3.PutObjectInput{
 				Bucket: aws.String(LFSBucketName),
 				Key:    aws.String(key),
-			}, s3.WithPresignExpires(LFSURLExpiry*time.Second))
+			}, s3.WithPresignExpires(time.Duration(LFSURLExpiry)*time.Second))
 			if err != nil {
 				result = append(result, LFSObjectResponse{
 					OID:   oid,

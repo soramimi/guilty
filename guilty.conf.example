@@ -1,0 +1,15 @@
+[server]
+listen_port = 1080
+host_name = git
+
+[git]
+repository_home = /home/git
+
+[lfs]
+storage_endpoint = http://mary.lan:9000
+storage_access_key = minioadmin
+storage_secret_key = minioadmin
+bucket_name = gitlfs
+url_expiry = 600
+
+

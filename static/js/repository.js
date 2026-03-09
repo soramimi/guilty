@@ -116,10 +116,6 @@ const repositoryApp = Vue.createApp({
       // グループ名とリポジトリ名を含む完全パス
       return `${this.groupName}/${this.repoName}`;
     },
-    lfsConfigCommand() {
-      const lfsUrl = `http://${window.location.host}/lfs/${this.groupName}/${this.repoName}/info/lfs`;
-      return `git config lfs.url "${lfsUrl}"`;
-    }
   },
   template: `
     <div>
@@ -193,7 +189,7 @@ const repositoryApp = Vue.createApp({
               <dt class="col-sm-2 text-left">LFSサポート</dt>
               <dd class="col-sm-10">
                 <div class="input-group">
-                  <input type="text" class="form-control" readonly :value="lfsConfigCommand" id="lfsConfigInput">
+                  <input type="text" class="form-control" readonly :value="repository.lfsConfigCmd || ''" id="lfsConfigInput">
                   <div class="input-group-append">
                     <button class="btn btn-outline-secondary" type="button" @click="copyLfsConfig" title="コマンドをコピー">
                       <span>{{ lfsConfigCopied ? 'コピーしました！' : 'コピー' }}</span>

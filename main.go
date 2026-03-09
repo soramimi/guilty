@@ -35,6 +35,9 @@ var GitHostName = "git"
 // GitCloneURLTemplate はクローンURLのテンプレートを定義します
 const GitCloneURLTemplate = "git@%s:%s/%s.git"
 
+// LFSConfigTemplate はLFS設定コマンドのテンプレートを定義します
+const LFSConfigTemplate = `git config lfs.url "http://%s/lfs/%s/%s"`
+
 // 除外すべきグループ名のパターンを定義
 var GroupNameBlacklist = []*regexp.Regexp{
 	regexp.MustCompile(`^git-shell-commands$`), // git-shell-commands を除外
@@ -141,12 +144,13 @@ type PageData struct {
 }
 
 type GitRepository struct {
-	Path       string      `json:"path"`
-	Group      string      `json:"group"`
-	Name       string      `json:"name"`
-	Type       string      `json:"type"`
-	CloneURL   string      `json:"cloneUrl"` // クローン用URLを追加
-	LastCommit *CommitInfo `json:"lastCommit"`
+	Path          string      `json:"path"`
+	Group         string      `json:"group"`
+	Name          string      `json:"name"`
+	Type          string      `json:"type"`
+	CloneURL      string      `json:"cloneUrl"`      // クローン用URLを追加
+	LFSConfigCmd  string      `json:"lfsConfigCmd"`  // LFS設定コマンドを追加
+	LastCommit    *CommitInfo `json:"lastCommit"`
 }
 
 type CommitInfo struct {
@@ -493,7 +497,8 @@ func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 			Path: filepath.Join(groupName, repoName),
 			Name: repoName,
 			// クローンURLを生成
-			CloneURL: fmt.Sprintf(GitCloneURLTemplate, GitHostName, groupName, repoName),
+			CloneURL:     fmt.Sprintf(GitCloneURLTemplate, GitHostName, groupName, repoName),
+			LFSConfigCmd: fmt.Sprintf(LFSConfigTemplate, GitHostName, groupName, repoName),
 		}
 
 		// 最新のコミット情報を取得
@@ -641,12 +646,12 @@ func getGitRepositories(groupName string) ([]GitRepository, error) {
 			}
 
 			repo := GitRepository{
-				Path:  path,
-				Group: groupName, // 選択されたグループ名を使用
-				Name:  repoName,
-				Type:  "bare",
-				// クローンURLを生成
-				CloneURL: fmt.Sprintf(GitCloneURLTemplate, GitHostName, groupName, repoName),
+				Path:         path,
+				Group:        groupName, // 選択されたグループ名を使用
+				Name:         repoName,
+				Type:         "bare",
+				CloneURL:     fmt.Sprintf(GitCloneURLTemplate, GitHostName, groupName, repoName),
+				LFSConfigCmd: fmt.Sprintf(LFSConfigTemplate, GitHostName, groupName, repoName),
 			}
 
 			// 最新のコミット情報を取得

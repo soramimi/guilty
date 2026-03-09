@@ -1,4 +1,4 @@
-module hello-world-app
+module guilty
 
 go 1.24.2
 

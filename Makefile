@@ -43,3 +43,7 @@ start:
 
 stop:
 	systemctl stop guilty
+
+restart:
+	systemctl restart guilty
+

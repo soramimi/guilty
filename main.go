@@ -33,7 +33,7 @@ var GitRepositoryHome = "/home/git"
 var GitHostName = "git"
 
 // GitCloneURLTemplate はクローンURLのテンプレートを定義します
-const GitCloneURLTemplate = "git@%s:%s/%s.git"
+const GitCloneURLTemplate = "ssh://git@%s/~/%s/%s.git"
 
 // LFSConfigTemplate はLFS設定コマンドのテンプレートを定義します
 const LFSConfigTemplate = `git config lfs.url "http://%s/lfs/%s/%s/info/lfs"`

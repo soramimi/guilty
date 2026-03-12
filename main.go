@@ -35,8 +35,9 @@ var GitHostName = "git"
 // GitCloneURLTemplate はクローンURLのテンプレートを定義します
 const GitCloneURLTemplate = "ssh://git@%s/~/%s/%s.git"
 
-// LFSConfigTemplate はLFS設定コマンドのテンプレートを定義します
-const LFSConfigTemplate = `git config lfs.url "http://%s/~/%s/%s.git/info/lfs"`
+// LFSConfigCmdTemplate はLFS設定コマンドのテンプレートを定義します
+const LFSConfigURLTemplate = `http://%s/~/%s/%s.git/info/lfs`
+const LFSConfigCmdTemplate = `git config lfs.url "http://%s/~/%s/%s.git/info/lfs"`
 
 // 除外すべきグループ名のパターンを定義
 var GroupNameBlacklist = []*regexp.Regexp{
@@ -44,6 +45,7 @@ var GroupNameBlacklist = []*regexp.Regexp{
 }
 
 // LFS ストレージ設定
+var LFSSupported = true
 var LFSStorageEndpoint = "http://git:9000"
 var LFSBucketName = "gitlfs"
 var LFSURLExpiry = 600 // seconds
@@ -85,6 +87,9 @@ func loadConfig(path string) {
 			GitHostName = value
 		case "git.repository_home":
 			GitRepositoryHome = value
+		case "lfs.supported":
+			val := strings.ToLower(value)
+			LFSSupported = (val == "yes") || (val == "true")
 		case "lfs.storage_endpoint":
 			LFSStorageEndpoint = value
 		case "lfs.storage_access_key":
@@ -140,6 +145,7 @@ type PageData struct {
 	Title        string
 	Message      string
 	HostName     string
+	LFSSupported bool
 	BuildVersion string // キャッシュ回避用のビルドバージョン
 }
 
@@ -149,6 +155,7 @@ type GitRepository struct {
 	Name         string      `json:"name"`
 	Type         string      `json:"type"`
 	CloneURL     string      `json:"cloneUrl"`     // クローン用URLを追加
+	LFSConfigURL string      `json:"lfsConfigURL"` // LFS API URL
 	LFSConfigCmd string      `json:"lfsConfigCmd"` // LFS設定コマンドを追加
 	LastCommit   *CommitInfo `json:"lastCommit"`
 }
@@ -276,6 +283,7 @@ func repositoryPageHandler(w http.ResponseWriter, r *http.Request) {
 		Title:        "リポジトリ詳細",
 		Message:      "リポジトリ: " + repoPath,
 		HostName:     GitHostName,
+		LFSSupported: LFSSupported,
 		BuildVersion: fmt.Sprintf("%d", time.Now().Unix()), // Unixタイムスタンプをバージョンとして使用
 	}
 
@@ -506,7 +514,8 @@ func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 			Name: repoName,
 			// クローンURLを生成
 			CloneURL:     fmt.Sprintf(GitCloneURLTemplate, GitHostName, groupName, repoName),
-			LFSConfigCmd: fmt.Sprintf(LFSConfigTemplate, GitHostName, groupName, repoName),
+			LFSConfigURL: fmt.Sprintf(LFSConfigURLTemplate, GitHostName, groupName, repoName),
+			LFSConfigCmd: fmt.Sprintf(LFSConfigCmdTemplate, GitHostName, groupName, repoName),
 		}
 
 		// 最新のコミット情報を取得
@@ -659,7 +668,8 @@ func getGitRepositories(groupName string) ([]GitRepository, error) {
 				Name:         repoName,
 				Type:         "bare",
 				CloneURL:     fmt.Sprintf(GitCloneURLTemplate, GitHostName, groupName, repoName),
-				LFSConfigCmd: fmt.Sprintf(LFSConfigTemplate, GitHostName, groupName, repoName),
+				LFSConfigURL: fmt.Sprintf(LFSConfigURLTemplate, GitHostName, groupName, repoName),
+				LFSConfigCmd: fmt.Sprintf(LFSConfigCmdTemplate, GitHostName, groupName, repoName),
 			}
 
 			// 最新のコミット情報を取得

@@ -69,6 +69,7 @@ const repositoryApp = Vue.createApp({
       deleteInProgress: false, // 削除処理中フラグ
       deleteError: null, // 削除エラーメッセージ
       hostName: document.querySelector('meta[name="git-host"]')?.content || 'localhost',
+      lfsSupported: document.querySelector('meta[name="lfs-supported"]')?.content === 'true',
       showDropdown: false, // ハンバーガーメニューの表示状態
       branches: [], // ブランチ一覧
       tags: [], // タグ一覧
@@ -186,10 +187,11 @@ const repositoryApp = Vue.createApp({
                 <small class="text-muted mt-1 d-block">{{ repository.cloneUrl ? '' : 'クローンURLが取得できませんでした' }}</small>
               </dd>
 
-              <dt class="col-sm-2 text-left">LFSサポート</dt>
+              <template v-if="lfsSupported">
+              <dt class="col-sm-2 text-left">LFSサポートURL</dt>
               <dd class="col-sm-10">
                 <div class="input-group">
-                  <input type="text" class="form-control" readonly :value="repository.lfsConfigCmd || ''" id="lfsConfigInput">
+                  <input type="text" class="form-control" readonly :value="repository.lfsConfigURL || ''" id="lfsConfigInput">
                   <div class="input-group-append">
                     <button class="btn btn-outline-secondary" type="button" @click="copyLfsConfig" title="コマンドをコピー">
                       <span>{{ lfsConfigCopied ? 'コピーしました！' : 'コピー' }}</span>
@@ -197,6 +199,18 @@ const repositoryApp = Vue.createApp({
                   </div>
                 </div>
               </dd>
+
+              <dt class="col-sm-2 text-left">設定例</dt>
+              <dd v-if="repository.lastCommit" class="col-sm-10 text-left">
+                {{ repository.lfsConfigCmd }}
+              </dd>
+
+              <dt class="col-sm-2 text-left"></dt>
+              <dd v-if="repository.lastCommit" class="col-sm-10 text-left">
+                [lfs]
+                  url = {{ repository.lfsConfigURL }}
+              </dd>
+              </template>
             </dl>
           </div>
         </div>

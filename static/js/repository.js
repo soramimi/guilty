@@ -84,7 +84,7 @@ const repositoryApp = Vue.createApp({
   computed: {
     repoPath() {
       const path = window.location.pathname;
-      return path.substring('/-/repository/'.length);
+      return path.substring('/'.length);
     },
     groupName() {
       const parts = this.repoPath.split('/');

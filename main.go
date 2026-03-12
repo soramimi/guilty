@@ -36,7 +36,7 @@ var GitHostName = "git"
 const GitCloneURLTemplate = "ssh://git@%s/~/%s/%s.git"
 
 // LFSConfigTemplate はLFS設定コマンドのテンプレートを定義します
-const LFSConfigTemplate = `git config lfs.url "http://%s/-/lfs/%s/%s/info/lfs"`
+const LFSConfigTemplate = `git config lfs.url "http://%s/~/%s/%s.git/info/lfs"`
 
 // 除外すべきグループ名のパターンを定義
 var GroupNameBlacklist = []*regexp.Regexp{
@@ -44,7 +44,7 @@ var GroupNameBlacklist = []*regexp.Regexp{
 }
 
 // LFS ストレージ設定
-var LFSStorageEndpoint = "http://git.lan:9000"
+var LFSStorageEndpoint = "http://git:9000"
 var LFSBucketName = "gitlfs"
 var LFSURLExpiry = 600 // seconds
 
@@ -211,12 +211,6 @@ func main() {
 	// HEADブランチ変更API
 	http.HandleFunc("/-/api/head/", changeHeadBranchHandler)
 
-	// Git LFS Batch API
-	http.HandleFunc("/-/lfs/", lfsHandler)
-
-	// リポジトリ詳細ページのルーティング
-	http.HandleFunc("/-/repository/", repositoryPageHandler)
-
 	// 新規リポジトリ作成ページのルーティング
 	http.HandleFunc("/-/create-repository", createRepositoryPageHandler)
 
@@ -227,6 +221,20 @@ func main() {
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
+		// /~/{group}/{repo}/info/lfs/... 形式のパスはLFSハンドラとして扱う
+		if strings.HasPrefix(r.URL.Path, "/~/") {
+			parts := strings.SplitN(strings.TrimPrefix(r.URL.Path, "/~/"), "/", 3)
+			if len(parts) == 3 && parts[0] != "" && parts[1] != "" && strings.HasPrefix(parts[2], "info/lfs") {
+				lfsHandler(w, r)
+				return
+			}
+		}
+		parts := strings.SplitN(strings.TrimPrefix(r.URL.Path, "/"), "/", 3)
+		// /{group}/{repo} 形式のパスはリポジトリ詳細ページとして扱う
+		if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
+			repositoryPageHandler(w, r)
+			return
+		}
 		http.NotFound(w, r)
 		return
 	}
@@ -260,8 +268,8 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func repositoryPageHandler(w http.ResponseWriter, r *http.Request) {
-	// リポジトリ名をURLから取得（/repository/以降の部分）
-	repoPath := strings.TrimPrefix(r.URL.Path, "/-/repository/")
+	// リポジトリ名をURLから取得（/{group}/{repo} 形式）
+	repoPath := strings.TrimPrefix(r.URL.Path, "/")
 
 	// ページデータの準備
 	data := PageData{
@@ -1548,12 +1556,12 @@ func lfsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// パスを解析: /lfs/{group}/{reponame}/info/lfs/objects/batch
-	path := strings.TrimPrefix(r.URL.Path, "/-/lfs/")
+	// パスを解析: /~/{group}/{reponame}/info/lfs/objects/batch
+	path := strings.TrimPrefix(r.URL.Path, "/~/")
 	parts := strings.SplitN(path, "/", 3)
 	if len(parts) < 3 {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"message": "エンドポイントが見つかりません"})
+		json.NewEncoder(w).Encode(map[string]string{"message": "エンドポイントが見つかりません1"})
 		return
 	}
 
@@ -1573,7 +1581,7 @@ func lfsHandler(w http.ResponseWriter, r *http.Request) {
 
 	if parts[2] != "info/lfs/objects/batch" {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"message": "エンドポイントが見つかりません"})
+		json.NewEncoder(w).Encode(map[string]string{"message": "エンドポイントが見つかりません2: " + parts[2]})
 		return
 	}
 

@@ -22,7 +22,7 @@ const GuiltyUtils = {
    * @returns {string} リポジトリ詳細ページのURL
    */
   getRepositoryUrl(groupName, repoName) {
-    return `/-/repository/${this._getEncodedPath(groupName, repoName)}`;
+    return `/${this._getEncodedPath(groupName, repoName)}`;
   },
 
   /**

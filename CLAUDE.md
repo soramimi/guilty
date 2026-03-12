@@ -43,7 +43,7 @@ var ServerPort = 1080
 var GitRepositoryHome = "/home/git"
 var GitHostName = "git"
 const GitCloneURLTemplate = "ssh://git@%s/~/  %s/%s.git"
-const LFSConfigTemplate = `git config lfs.url "http://%s/lfs/%s/%s/info/lfs"`
+const LFSConfigTemplate = `git config lfs.url "http://%s/%s/%s/info/lfs"`
 ```
 
 Repository deletion is logical: the directory is renamed with a `.deleted` suffix rather than removed.
@@ -56,16 +56,24 @@ Repository deletion is logical: the directory is renamed with a `.deleted` suffi
 
 Templates are in `templates/` and use Go's `html/template`.
 
+**URL Routing**:
+
+All `/-/` prefixed paths are internal routes (API, static files, UI pages). Non-prefixed paths serve repository content:
+- `GET /` — home page (repository list)
+- `GET /{group}/{repo}` — repository detail page
+- `POST /{group}/{repo}/info/lfs/objects/batch` — Git LFS Batch API (routed via `homeHandler`)
+- `GET /-/static/` — static files
+- `GET /-/create-repository` — create repository page
+
 **API Endpoints**:
-- `GET /api/repositories` — list repos by group
-- `GET /api/groups` — list groups
-- `POST /api/repositories` — create repository
-- `GET /api/repository/{group}/{repo}` — repository metadata
-- `POST /api/repository/{group}/{repo}` — delete repository
-- `GET /api/directory/{group}/{repo}/{path}` — directory listing
-- `GET /api/file/{group}/{repo}/{filePath}` — file contents
-- `POST /api/head/{group}/{repo}` — change HEAD branch
-- `POST /lfs/{group}/{repo}/info/lfs/objects/batch` — Git LFS Batch API
+- `GET /-/api/repositories` — list repos by group
+- `GET /-/api/groups` — list groups
+- `POST /-/api/repositories` — create repository
+- `GET /-/api/repository/{group}/{repo}` — repository metadata
+- `POST /-/api/repository/{group}/{repo}` — delete repository
+- `GET /-/api/directory/{group}/{repo}/{path}` — directory listing
+- `GET /-/api/file/{group}/{repo}/{filePath}` — file contents
+- `POST /-/api/head/{group}/{repo}` — change HEAD branch
 
 ## Configuration
 

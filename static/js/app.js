@@ -132,7 +132,7 @@ const app = Vue.createApp({
     fetchGroups() {
       // グループ一覧を取得
       this.loadingGroups = true;
-      axios.get('/api/groups')
+      axios.get('/-/api/groups')
         .then(response => {
           this.groups = response.data;
           this.loadingGroups = false;

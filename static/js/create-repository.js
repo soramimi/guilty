@@ -104,7 +104,7 @@ const createRepoApp = Vue.createApp({
     fetchGroups() {
       // グループ一覧を取得
       this.loadingGroups = true;
-      axios.get('/api/groups')
+      axios.get('/-/api/groups')
         .then(response => {
           this.groups = response.data;
           this.loadingGroups = false;
@@ -140,7 +140,7 @@ const createRepoApp = Vue.createApp({
       this.error = null;
       
       // APIリクエストを送信
-      axios.post('/api/repositories', {
+      axios.post('/-/api/repositories', {
         name: this.repositoryName,
         group: this.selectedGroup
       })

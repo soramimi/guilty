@@ -84,7 +84,7 @@ const repositoryApp = Vue.createApp({
   computed: {
     repoPath() {
       const path = window.location.pathname;
-      return path.substring('/repository/'.length);
+      return path.substring('/-/repository/'.length);
     },
     groupName() {
       const parts = this.repoPath.split('/');
@@ -687,7 +687,7 @@ git push origin master</pre>
       this.headChangeInProgress = true;
       this.headChangeError = null;
 
-      const apiUrl = `/api/head/${encodeURIComponent(this.groupName)}/${encodeURIComponent(this.repoName)}`;
+      const apiUrl = `/-/api/head/${encodeURIComponent(this.groupName)}/${encodeURIComponent(this.repoName)}`;
 
       axios.post(apiUrl, {
         branch: this.selectedBranch

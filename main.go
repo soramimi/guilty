@@ -36,7 +36,7 @@ var GitHostName = "git"
 const GitCloneURLTemplate = "ssh://git@%s/~/%s/%s.git"
 
 // LFSConfigTemplate はLFS設定コマンドのテンプレートを定義します
-const LFSConfigTemplate = `git config lfs.url "http://%s/lfs/%s/%s/info/lfs"`
+const LFSConfigTemplate = `git config lfs.url "http://%s/-/lfs/%s/%s/info/lfs"`
 
 // 除外すべきグループ名のパターンを定義
 var GroupNameBlacklist = []*regexp.Regexp{
@@ -44,7 +44,7 @@ var GroupNameBlacklist = []*regexp.Regexp{
 }
 
 // LFS ストレージ設定
-var LFSStorageEndpoint = "http://mary.lan:9000"
+var LFSStorageEndpoint = "http://git.lan:9000"
 var LFSBucketName = "gitlfs"
 var LFSURLExpiry = 600 // seconds
 
@@ -188,37 +188,37 @@ func main() {
 
 	// 静的ファイルのルーティング
 	fs := http.FileServer(http.Dir("static"))
-	http.Handle("/static/", http.StripPrefix("/static/", fs))
+	http.Handle("/-/static/", http.StripPrefix("/-/static/", fs))
 
 	// ホームページのルーティング
 	http.HandleFunc("/", homeHandler)
 
 	// Gitリポジトリ一覧API
-	http.HandleFunc("/api/repositories", repositoriesHandler)
+	http.HandleFunc("/-/api/repositories", repositoriesHandler)
 
 	// グループ一覧API
-	http.HandleFunc("/api/groups", groupsHandler)
+	http.HandleFunc("/-/api/groups", groupsHandler)
 
 	// リポジトリ詳細API
-	http.HandleFunc("/api/repository/", repositoryDetailsHandler)
+	http.HandleFunc("/-/api/repository/", repositoryDetailsHandler)
 
 	// ディレクトリ内容取得API
-	http.HandleFunc("/api/directory/", directoryContentsHandler)
+	http.HandleFunc("/-/api/directory/", directoryContentsHandler)
 
 	// ファイル内容取得API
-	http.HandleFunc("/api/file/", fileContentsHandler)
+	http.HandleFunc("/-/api/file/", fileContentsHandler)
 
 	// HEADブランチ変更API
-	http.HandleFunc("/api/head/", changeHeadBranchHandler)
+	http.HandleFunc("/-/api/head/", changeHeadBranchHandler)
 
 	// Git LFS Batch API
-	http.HandleFunc("/lfs/", lfsHandler)
+	http.HandleFunc("/-/lfs/", lfsHandler)
 
 	// リポジトリ詳細ページのルーティング
-	http.HandleFunc("/repository/", repositoryPageHandler)
+	http.HandleFunc("/-/repository/", repositoryPageHandler)
 
 	// 新規リポジトリ作成ページのルーティング
-	http.HandleFunc("/create-repository", createRepositoryPageHandler)
+	http.HandleFunc("/-/create-repository", createRepositoryPageHandler)
 
 	// サーバー起動
 	fmt.Printf("サーバーを起動しています。http://localhost:%d にアクセスしてください\n", ServerPort)
@@ -261,7 +261,7 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 
 func repositoryPageHandler(w http.ResponseWriter, r *http.Request) {
 	// リポジトリ名をURLから取得（/repository/以降の部分）
-	repoPath := strings.TrimPrefix(r.URL.Path, "/repository/")
+	repoPath := strings.TrimPrefix(r.URL.Path, "/-/repository/")
 
 	// ページデータの準備
 	data := PageData{
@@ -433,7 +433,7 @@ func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// リポジトリパスを取得（/api/repository/以降の部分）
-	encodedPath := strings.TrimPrefix(r.URL.Path, "/api/repository/")
+	encodedPath := strings.TrimPrefix(r.URL.Path, "/-/api/repository/")
 	// URLエンコードされたパスをデコード
 	decodedPath, err := url.PathUnescape(encodedPath)
 	if err != nil {
@@ -1060,7 +1060,7 @@ func directoryContentsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Methods", "GET")
 
 	// URLからパラメータを取得
-	encodedPath := strings.TrimPrefix(r.URL.Path, "/api/directory/")
+	encodedPath := strings.TrimPrefix(r.URL.Path, "/-/api/directory/")
 
 	// 最初の2つのスラッシュの位置を特定
 	firstSlashPos := strings.Index(encodedPath, "/")
@@ -1172,7 +1172,7 @@ func fileContentsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Methods", "GET")
 
 	// URLからパラメータを取得
-	encodedPath := strings.TrimPrefix(r.URL.Path, "/api/file/")
+	encodedPath := strings.TrimPrefix(r.URL.Path, "/-/api/file/")
 
 	// 最初の2つのスラッシュの位置を特定
 	firstSlashPos := strings.Index(encodedPath, "/")
@@ -1470,7 +1470,7 @@ func changeHeadBranchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// リポジトリパスを取得（/api/head/以降の部分）
-	encodedPath := strings.TrimPrefix(r.URL.Path, "/api/head/")
+	encodedPath := strings.TrimPrefix(r.URL.Path, "/-/api/head/")
 	// URLエンコードされたパスをデコード
 	decodedPath, err := url.PathUnescape(encodedPath)
 	if err != nil {
@@ -1549,7 +1549,7 @@ func lfsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// パスを解析: /lfs/{group}/{reponame}/info/lfs/objects/batch
-	path := strings.TrimPrefix(r.URL.Path, "/lfs/")
+	path := strings.TrimPrefix(r.URL.Path, "/-/lfs/")
 	parts := strings.SplitN(path, "/", 3)
 	if len(parts) < 3 {
 		w.WriteHeader(http.StatusNotFound)

@@ -22,7 +22,7 @@ const GuiltyUtils = {
    * @returns {string} リポジトリ詳細ページのURL
    */
   getRepositoryUrl(groupName, repoName) {
-    return `/repository/${this._getEncodedPath(groupName, repoName)}`;
+    return `/-/repository/${this._getEncodedPath(groupName, repoName)}`;
   },
 
   /**
@@ -32,7 +32,7 @@ const GuiltyUtils = {
    * @returns {string} APIで使用するリポジトリパス
    */
   getApiRepositoryPath(groupName, repoName) {
-    return `/api/repository/${this._getEncodedPath(groupName, repoName)}`;
+    return `/-/api/repository/${this._getEncodedPath(groupName, repoName)}`;
   },
 
   /**
@@ -43,7 +43,7 @@ const GuiltyUtils = {
    * @returns {string} APIで使用するファイルパス
    */
   getApiFilePath(groupName, repoName, filePath) {
-    const basePath = `/api/file/${this._getEncodedPath(groupName, repoName)}`;
+    const basePath = `/-/api/file/${this._getEncodedPath(groupName, repoName)}`;
     if (!filePath) return basePath;
     
     // パスの各部分を保持したままURLを構築
@@ -60,7 +60,7 @@ const GuiltyUtils = {
    * @returns {string} APIで使用するディレクトリパス
    */
   getApiDirectoryPath(groupName, repoName, dirPath) {
-    const basePath = `/api/directory/${this._getEncodedPath(groupName, repoName)}`;
+    const basePath = `/-/api/directory/${this._getEncodedPath(groupName, repoName)}`;
     if (!dirPath) return basePath;
     
     // パスの各部分を保持したままURLを構築
@@ -75,7 +75,7 @@ const GuiltyUtils = {
    * @returns {string} リポジトリ一覧APIのURL
    */
   getRepositoriesApiUrl(groupName) {
-    return `/api/repositories?group=${encodeURIComponent(groupName)}`;
+    return `/-/api/repositories?group=${encodeURIComponent(groupName)}`;
   },
 
   /**
@@ -93,7 +93,7 @@ const GuiltyUtils = {
    * @returns {string} 新規リポジトリ作成ページのURL
    */
   getCreateRepositoryUrl(groupName) {
-    return `/create-repository?group=${encodeURIComponent(groupName)}`;
+    return `/-/create-repository?group=${encodeURIComponent(groupName)}`;
   }
 };
 

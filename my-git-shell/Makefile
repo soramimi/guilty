@@ -44,8 +44,8 @@ run:
 	./$(NAME)
 
 .PHONY: install
-install:
-	install -m 755 $(NAME) ~/.local/bin/
+install: $(NAME)
+	install -m 755 $(NAME) /usr/local/bin/
 
 .PHONY: uninstall
 uninstall:

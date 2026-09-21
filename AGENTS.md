@@ -115,9 +115,18 @@ url_expiry = 600
 
 - 用途: SSH 経由での `git clone`/`push`/`fetch` を制限付きで許可するログインシェル
 - 対応コマンド: `git-receive-pack`, `git-upload-pack`, `git-upload-archive`
-- 動作: `SSH_ORIGINAL_COMMAND` を解析し、許可されたコマンドと安全なリポジトリパスのみ `execvp` で実際の git コマンドに委譲
+- 動作:
+  - `SSH_ORIGINAL_COMMAND` 環境変数、または `-c` オプション経由で渡されたコマンドを解析し、許可されたコマンドと安全なリポジトリパスのみ `execvp` で実際の git コマンドに委譲
+  - `-c` オプションは sshd の `command="/path/to/my-git-shell -c"` 形式を想定し、`argv[2]` に含まれるコマンド文字列全体を `parse_command()` で解析する
 - セキュリティ: 絶対パス、シェルメタ文字、`..` による traversal、ディレクトリ存在を検証
 - ビルド: `cd my-git-shell && make`
 - インストール例: `~/.ssh/authorized_keys` の `command=` に `my-git-shell` のパスを指定
 
-現在は最小限の機能のみ実装しており、将来的には Guilty 本体との連携（キャッシュ無効化など）を検討しています。
+### キャッシュ無効化連携（準備段階）
+
+将来的な `push`/`fetch` 後の即時キャッシュ無効化に向けて、`my-git-shell/main.cpp` にグループキャッシュファイル（`.guilty-cache.json`）の JSON 読み書き関数を追加しました。
+
+- `guilty::load_cache_file(path)` — キャッシュ JSON を読み込み、エントリ一覧を返す
+- `guilty::save_cache_file(path, cache)` — キャッシュ JSON を一時ファイル（`.tmp`）へ書き込み、`rename()` でアトミックに置き換える
+- これらの関数は現時点ではデバッグブロック内でのみ呼び出されており、実際の push/fetch 後の無効化ロジックは未実装です
+- 実装にあたり、Go 側の `cacheKey` 形式（`repoPath + "#" + HEAD参照`）に合わせ、ブランチ名だけでなく detached HEAD の SHA をキーに持つエントリも読み書き対象としています

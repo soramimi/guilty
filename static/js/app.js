@@ -36,6 +36,7 @@ const app = Vue.createApp({
       groups: [],
       selectedGroup: 'git',
       loadingGroups: true,
+      refreshing: false,
       pageTitle: document.querySelector('h1'),
       pageMessage: document.querySelector('p')
     };
@@ -77,6 +78,15 @@ const app = Vue.createApp({
           />
         </div>
         <div>
+          <button 
+            class="btn btn-outline-secondary mr-2" 
+            @click="refreshCache"
+            :disabled="refreshing"
+            title="表示中のグループのキャッシュを更新"
+          >
+            <i class="fa fa-sync" :class="{ 'fa-spin': refreshing }"></i>
+            {{ refreshing ? '更新中...' : '更新' }}
+          </button>
           <a :href="getCreateRepositoryUrl(selectedGroup)" class="btn btn-primary">
             <i class="fa fa-plus-circle"></i> 新規リポジトリ
           </a>
@@ -148,7 +158,7 @@ const app = Vue.createApp({
     fetchRepositories() {
       // APIエンドポイントからリポジトリを取得
       this.loading = true;
-      axios.get(GuiltyUtils.getRepositoriesApiUrl(this.selectedGroup))
+      return axios.get(GuiltyUtils.getRepositoriesApiUrl(this.selectedGroup))
         .then(response => {
           this.repositories = response.data;
           this.loading = false;
@@ -181,6 +191,20 @@ const app = Vue.createApp({
     },
     getCreateRepositoryUrl(group) {
       return GuiltyUtils.getCreateRepositoryUrl(group);
+    },
+    refreshCache() {
+      // 表示中のグループのキャッシュを無効化し、リポジトリ一覧を再取得
+      this.refreshing = true;
+      axios.post('/-/api/cache/invalidate', { group: this.selectedGroup })
+        .then(() => {
+          return this.fetchRepositories();
+        })
+        .catch(error => {
+          this.error = `キャッシュの更新に失敗しました: ${error.message}`;
+        })
+        .finally(() => {
+          this.refreshing = false;
+        });
     }
   }
 });

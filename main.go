@@ -53,6 +53,10 @@ var LFSURLExpiry = 600 // seconds
 var LFSAccessKeyID = "minioadmin"
 var LFSSecretAccessKey = "minioadmin"
 
+// キャッシュ設定
+var CacheEnabled = true
+var CacheTTLSeconds = 60
+
 // loadConfig は guilty.conf を読み込んで設定値を更新します
 func loadConfig(path string) {
 	f, err := os.Open(path)
@@ -101,6 +105,13 @@ func loadConfig(path string) {
 		case "lfs.url_expiry":
 			if v, err := strconv.Atoi(value); err == nil {
 				LFSURLExpiry = v
+			}
+		case "cache.enabled":
+			val := strings.ToLower(value)
+			CacheEnabled = (val == "yes") || (val == "true")
+		case "cache.ttl_seconds":
+			if v, err := strconv.Atoi(value); err == nil && v >= 0 {
+				CacheTTLSeconds = v
 			}
 		}
 	}
@@ -217,6 +228,9 @@ func main() {
 
 	// HEADブランチ変更API
 	http.HandleFunc("/-/api/head/", changeHeadBranchHandler)
+
+	// キャッシュ手動無効化API
+	http.HandleFunc("/-/api/cache/invalidate", cacheInvalidateHandler)
 
 	// 新規リポジトリ作成ページのルーティング
 	http.HandleFunc("/-/create-repository", createRepositoryPageHandler)
@@ -381,6 +395,13 @@ func repositoriesHandler(w http.ResponseWriter, r *http.Request) {
 			groupName = "git"
 		}
 
+		// グループ名のバリデーション
+		if !isValidGroupName(groupName) {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "無効なグループ名です"})
+			return
+		}
+
 		// Gitリポジトリを取得
 		repos, err := getGitRepositories(groupName)
 		if err != nil {
@@ -460,6 +481,13 @@ func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 
 	groupName, repoName := splitRepositoryName(decodedPath)
 
+	// グループ名のバリデーション
+	if !isValidGroupName(groupName) {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "無効なグループ名です"})
+		return
+	}
+
 	// POSTリクエストの場合はリポジトリを削除する
 	if r.Method == http.MethodPost {
 		// リクエストボディから操作タイプを取得
@@ -519,7 +547,7 @@ func repositoryDetailsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// 最新のコミット情報を取得
-		repo.LastCommit = getLastCommit(repoPath)
+		repo.LastCommit = getLastCommit(repoPath, groupName)
 
 		// ファイル一覧を取得
 		files, err := getRepositoryFiles(repoPath)
@@ -673,7 +701,7 @@ func getGitRepositories(groupName string) ([]GitRepository, error) {
 			}
 
 			// 最新のコミット情報を取得
-			repo.LastCommit = getLastCommit(path)
+			repo.LastCommit = getLastCommit(path, groupName)
 			repositories = append(repositories, repo)
 		}
 	}
@@ -767,7 +795,12 @@ func getGroupList() ([]string, error) {
 	return groups, nil
 }
 
-func getLastCommit(repoPath string) *CommitInfo {
+func getLastCommit(repoPath, groupName string) *CommitInfo {
+	// キャッシュが有効な場合は TTL 内のキャッシュを確認
+	if commit := getCachedLastCommit(groupName, repoPath); commit != nil {
+		return commit
+	}
+
 	var cmd *exec.Cmd
 
 	cmd = exec.Command("git", "--git-dir="+repoPath, "log", "-1", "--format=%an|%at|%s")
@@ -788,11 +821,16 @@ func getLastCommit(repoPath string) *CommitInfo {
 		return nil
 	}
 
-	return &CommitInfo{
+	commit := &CommitInfo{
 		Author:  parts[0],
 		Date:    time.Unix(unixTime, 0),
 		Message: parts[2],
 	}
+
+	// 結果をキャッシュに保存
+	setCachedLastCommit(groupName, repoPath, commit)
+
+	return commit
 }
 
 // hasCommits はリポジトリにコミットが1件以上あるか確認する
@@ -1426,6 +1464,11 @@ func createRepository(name string, group string) error {
 func deleteRepository(name string) error {
 	groupName, baseName := splitRepositoryName(name)
 
+	// グループ名のバリデーション
+	if !isValidGroupName(groupName) {
+		return fmt.Errorf("無効なグループ名です: %s", groupName)
+	}
+
 	// リポジトリのパスを構築
 	repoPath := filepath.Join(filepath.Join(GitRepositoryHome, groupName), baseName+".git")
 
@@ -1457,6 +1500,9 @@ func deleteRepository(name string) error {
 	if renameErr != nil {
 		return fmt.Errorf("リポジトリの名前変更に失敗しました: %w", renameErr)
 	}
+
+	// グループのキャッシュを無効化
+	invalidateGroupCache(groupName)
 
 	// 権限を変更（読み書き禁止: chmod 000）
 	chmodErr := os.Chmod(newPath, 0000)
@@ -1552,6 +1598,51 @@ func changeRepositoryHead(groupName, repoName, branchName string) error {
 	}
 
 	return nil
+}
+
+// cacheInvalidateHandler はグループのキャッシュを手動で無効化するハンドラー
+func cacheInvalidateHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "POSTメソッドのみサポートしています"})
+		return
+	}
+
+	var requestBody struct {
+		Group string `json:"group"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "不正なリクエスト形式"})
+		return
+	}
+
+	if requestBody.Group == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "グループ名が指定されていません"})
+		return
+	}
+
+	if !isValidGroupName(requestBody.Group) {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "無効なグループ名です"})
+		return
+	}
+
+	invalidateGroupCache(requestBody.Group)
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "キャッシュを更新しました"})
 }
 
 // lfsHandler は Git LFS Batch API を処理するハンドラー

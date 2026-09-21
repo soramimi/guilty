@@ -12,4 +12,8 @@ storage_secret_key = minioadmin
 bucket_name = gitlfs
 url_expiry = 600
 
+[cache]
+enabled = yes
+ttl_seconds = 60
+
 

@@ -2,147 +2,147 @@
 
 # Guilty
 
-**🚧 This is a work in progress 🚧**
+**🚧 現在開発中です 🚧**
 
-*Note: Most of this code was generated using GitHub Copilot Agent and Claude 3.7 Sonnet.*
+Guiltyは、WebベースのGitリポジトリ管理ツールです。直感的なWebインターフェースを通じて、シンプルなリポジトリ管理機能を提供します。「Guilty」という名前は、Gitをもじった遊び心のある呼び方で、コードの変更をバージョン管理から隠せないことを示唆しています。
 
-Guilty is a web-based Git repository manager that provides simple repository management capabilities through an intuitive web interface. The name "Guilty" is a playful reference to Git, suggesting that your code changes can't hide from version control.
+## 機能
 
-## Features
+- **リポジトリ一覧**: 一元化されたダッシュボードですべてのGitリポジトリを確認
+- **リポジトリのグループ化**: リポジトリを論理的なグループで整理
+- **リポジトリの作成**: バリデーション付きで新しいbare Gitリポジトリを作成
+- **リポジトリの削除**: 安全にリポジトリを削除（論理削除方式）
+- **ファイルの閲覧**: リポジトリ内のファイルやディレクトリを移動
+- **ファイルの表示**: テキスト／バイナリ判定付きでファイル内容を表示
+- **クローンURLのサポート**: GitクローンURLを簡単にコピー
+- **Git LFSサポート**: MinIO（S3互換オブジェクトストレージ）をバックエンドとしたGit Large File Storage（LFS）Batch API
 
-- **Repository Overview**: View all Git repositories in a centralized dashboard
-- **Repository Grouping**: Organize repositories in logical groups
-- **Repository Creation**: Create new bare Git repositories with validation
-- **Repository Deletion**: Safely delete repositories (with logical deletion approach)
-- **File Browsing**: Navigate through repository files and directories
-- **File Viewing**: View file contents with text/binary detection
-- **Clone URL Support**: Easily copy Git clone URLs for repositories
-- **Git LFS Support**: Git Large File Storage (LFS) Batch API backed by MinIO (S3-compatible object storage)
+## システム要件
 
-## System Requirements
+- Go 1.24以降
+- Gitコマンドラインツール
+- systemd（サービスインストール用）
+- ローカルの `git` ユーザーアカウント（下記の前提条件を参照）
+- MinIOまたはその他のS3互換オブジェクトストレージ（Git LFSサポート用）
 
-- Go 1.24 or later
-- Git command-line tools
-- systemd (for service installation)
-- A local `git` user account (see Prerequisites section below)
-- MinIO or other S3-compatible object storage (for Git LFS support)
+## 前提条件
 
-## Prerequisites
+### Gitユーザーアカウントの設定
 
-### Git User Account Setup
-
-Guilty requires a local `git` user account on your system to properly handle repository access:
+Guiltyは、リポジトリへのアクセスを適切に処理するために、ローカルの `git` ユーザーアカウントを必要とします。
 
 ```bash
-# Create a git user account if it doesn't exist
+# gitユーザーアカウントが存在しない場合は作成
 sudo useradd git
 ```
 
-If a `git` account already exists on your system and you cannot create one with `useradd`:
+既に `git` アカウントが存在し、`useradd` で作成できない場合は、以下の手順を行ってください。
 
-1. Create a home directory for the git user if needed:
+1. 必要に応じてgitユーザーのホームディレクトリを作成:
    ```bash
    sudo mkdir -p /home/git
    ```
 
-2. Edit the `/etc/passwd` file to set the correct home directory for the git user.
+2. `/etc/passwd` を編集し、gitユーザーのホームディレクトリを正しく設定。
 
-3. For external access to repositories, create a symbolic link from `/home/git/git` to your repository location:
+3. リポジトリへの外部アクセスのため、`/home/git/git` から実際のリポジトリ場所へシンボリックリンクを作成:
    ```bash
    cd /home/git
    sudo ln -s /mnt/git git
    ```
 
-This setup ensures that repositories can be accessed using the format: `git@hostname:group/repository.git`
+この設定により、リポジトリは `git@hostname:group/repository.git` という形式でアクセスできるようになります。
 
-## Installation
+## インストール
 
 ```bash
-# Clone the repository
+# リポジトリをクローン
 git clone https://github.com/soramimi/guilty.git
 cd guilty
 
-# Build the application
+# アプリケーションをビルド
 make build
 
-# Install the application (requires superuser privileges)
+# アプリケーションをインストール（スーパーユーザー権限が必要）
 sudo make install
 
-# Set up the systemd service
+# systemdサービスをセットアップ
 sudo cp guilty.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable guilty
 sudo systemctl start guilty
 ```
 
-## Configuration
+## 設定
 
-By default, Guilty looks for Git repositories under `/home/git`. If you need to change this location, modify the `GitRepositoryHome` constant in the source code before building.
+デフォルトでは、Guiltyは `/home/git` 以下のGitリポジトリを探します。保存場所を変更する必要がある場合は、ビルド前にソースコード内の `GitRepositoryHome` 定数を変更してください。
 
-The hostname used for Git clone URLs defaults to `git` but can be customized by modifying the `GitHostName` variable in the source code.
+GitクローンURLに使用されるホスト名はデフォルトで `git` ですが、ソースコード内の `GitHostName` 変数を変更することでカスタマイズできます。
 
-### Git LFS Configuration
+### Git LFS設定
 
-Guilty implements the [Git LFS Batch API](https://github.com/git-lfs/git-lfs/blob/main/docs/api/batch.md) at the following endpoint:
+Guiltyは、以下のエンドポイントで [Git LFS Batch API](https://github.com/git-lfs/git-lfs/blob/main/docs/api/batch.md) を実装しています。
 
 ```
 POST /lfs/{group}/{reponame}/info/lfs/objects/batch
 ```
 
-LFS objects are stored in a MinIO (S3-compatible) bucket. The following variables can be adjusted in the source code:
+LFSオブジェクトはMinIO（S3互換）バケットに保存されます。以下の変数はソースコード内で調整可能です。
 
-| Variable | Default | Description |
+| 変数 | デフォルト値 | 説明 |
 |---|---|---|
-| `LFSStorageEndpoint` | `http://minio.example.com:9000` | MinIO server URL |
-| `LFSBucketName` | `gitlfs` | Bucket name for LFS objects |
-| `LFSAccessKeyID` | `minioadmin` | MinIO access key |
-| `LFSSecretAccessKey` | `minioadmin` | MinIO secret key |
-| `LFSURLExpiry` | `600` | Presigned URL expiry in seconds |
+| `LFSStorageEndpoint` | `http://minio.example.com:9000` | MinIOサーバーのURL |
+| `LFSBucketName` | `gitlfs` | LFSオブジェクト用バケット名 |
+| `LFSAccessKeyID` | `minioadmin` | MinIOアクセスキー |
+| `LFSSecretAccessKey` | `minioadmin` | MinIOシークレットキー |
+| `LFSURLExpiry` | `600` | 署名付きURLの有効期限（秒） |
 
-Objects are stored under the key path:
+オブジェクトは以下のキーパスに保存されます。
 ```
 {group}/{reponame}/{oid[0:2]}/{oid[2:4]}/{oid}
 ```
 
-To configure Git LFS for a repository to use Guilty as the LFS server, set the LFS URL in the repository:
+リポジトリでGuiltyをLFSサーバーとして使用するには、以下のようにLFS URLを設定してください。
 
 ```bash
 git config lfs.url http://your-server:1080/lfs/group/reponame
 ```
 
-## Usage
+## 使い方
 
-Once running, access the web interface at: http://localhost:1080
+起動後、Webインターフェースは http://localhost:1080 でアクセスできます。
 
-From there you can:
-- Browse existing repositories organized by groups
-- Filter repositories by group
-- Create new repositories within specific groups
-- View file contents
-- Delete repositories
+Webインターフェースでは以下の操作が可能です。
 
-## Repository Groups
+- グループ別に整理された既存リポジトリの閲覧
+- グループによるリポジトリの絞り込み
+- 指定したグループ内への新規リポジトリ作成
+- ファイル内容の表示
+- リポジトリの削除
 
-Guilty organizes repositories into groups:
-- Groups are represented by subdirectories in the `GitRepositoryHome` directory (default: `/home/git`)
-- The default group is `git`
-- Groups with special characters (except `-` and `_`) are excluded
-- The group `git-shell-commands` is specifically excluded
-- Repository URLs follow the pattern: `git@hostname:group/repository.git`
+## リポジトリグループ
 
-## Development
+Guiltyはリポジトリをグループで整理します。
+
+- グループは `GitRepositoryHome` ディレクトリ（デフォルト: `/home/git`）内のサブディレクトリで表されます
+- デフォルトのグループは `git` です
+- `-` と `_` を除く特殊文字を含むグループは除外されます
+- グループ `git-shell-commands` は明示的に除外されます
+- リポジトリURLは `git@hostname:group/repository.git` の形式になります
+
+## 開発
 
 ```bash
-# Run in development mode
+# 開発モードで実行
 make run
 
-# Build the application
+# アプリケーションをビルド
 make build
 
-# Clean build artifacts
+# ビルド成果物を削除
 make clean
 ```
 
-## JavaScript Utilities
+## JavaScriptユーティリティ
 
-Guilty includes a JavaScript utilities library (`GuiltyUtils`) that provides consistent URL generation functions for interacting with the API endpoints and navigating between pages. This ensures proper URL encoding and consistent URL patterns throughout the application.
+Guiltyには、APIエンドポイントとの連携やページ間の移動に使用されるURL生成関数を一貫して提供するJavaScriptユーティリティライブラリ（`GuiltyUtils`）が含まれています。これにより、アプリケーション全体で適切なURLエンコーディングと一貫したURLパターンが保証されます。

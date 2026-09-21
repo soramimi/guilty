@@ -5,7 +5,7 @@ all: run
 
 # アプリケーションを実行
 run:
-	go run main.go
+	go run main.go cache.go
 
 # アプリケーションをビルド
 build:
